@@ -57,7 +57,7 @@ class _FindIdScreenState extends State<FindIdScreen> {
   Widget build(BuildContext context) {
     return AuthScaffold(
       title: 'ID 찾기',
-      subtitle: 'Kang에 등록된 이메일 ID를 확인합니다.',
+      subtitle: '가입한 이메일 ID를 확인합니다.',
       child: Form(
         key: _formKey,
         child: Column(

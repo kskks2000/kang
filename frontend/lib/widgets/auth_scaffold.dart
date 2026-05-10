@@ -91,7 +91,7 @@ class _BrandPanel extends StatelessWidget {
           const _Eyebrow(),
           const SizedBox(height: 14),
           Text(
-            'Kang을 위한 프라이빗 허브.',
+            'Kang 계정을 위한 프라이빗 허브.',
             style: textTheme.headlineLarge?.copyWith(
               fontSize: 42,
               height: 1.08,
@@ -101,7 +101,7 @@ class _BrandPanel extends StatelessWidget {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 430),
             child: Text(
-              '캘린더, 파일, 연락처, 가족 기록을 한 번의 로그인으로 안전하게 연결합니다.',
+              '캘린더, 파일, 연락처, 개인 기록을 한 번의 로그인으로 안전하게 연결합니다.',
               style: textTheme.bodyMedium?.copyWith(
                 color: KangColors.slate,
                 fontSize: 16,
@@ -113,7 +113,7 @@ class _BrandPanel extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: [
-              _BrandPill(icon: Icons.verified_user_outlined, label: '가족 전용'),
+              _BrandPill(icon: Icons.verified_user_outlined, label: '회원 계정'),
               _BrandPill(icon: Icons.cloud_done_outlined, label: '연동 준비'),
               _BrandPill(icon: Icons.lock_outline, label: '보안 로그인'),
             ],

@@ -26,11 +26,7 @@ class AuthApi {
   }
 
   Future<AppUser> createSession(String idToken) async {
-    final response = await _client.post(
-      _uri('/auth/session'),
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode({'id_token': idToken}),
-    );
+    final response = await _postJson('/auth/session', {'id_token': idToken});
 
     final json = _decode(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -41,11 +37,7 @@ class AuthApi {
   }
 
   Future<FindLoginIdResult> findLoginId(String email) async {
-    final response = await _client.post(
-      _uri('/auth/find-login-id'),
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email}),
-    );
+    final response = await _postJson('/auth/find-login-id', {'email': email});
 
     final json = _decode(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -53,6 +45,24 @@ class AuthApi {
     }
 
     return FindLoginIdResult.fromJson(json);
+  }
+
+  Future<http.Response> _postJson(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      return await _client.post(
+        _uri(path),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+    } on http.ClientException {
+      throw ApiException(
+        'API 서버에 연결할 수 없습니다. Backend가 실행 중인지 확인해 주세요. '
+        '현재 API 주소: ${AppConfig.apiBaseUrl}',
+      );
+    }
   }
 
   Map<String, dynamic> _decode(http.Response response) {

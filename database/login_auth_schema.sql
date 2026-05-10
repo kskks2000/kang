@@ -1,17 +1,17 @@
--- Login/authentication schema for the family Flutter app.
--- Based on the existing metaserver user/auth tables in the reference PostgreSQL DB.
+-- Login/authentication schema for the Kang app.
+-- Based on the existing kang user/auth tables in the reference PostgreSQL DB.
 -- Target: PostgreSQL 11+
 
-CREATE SCHEMA IF NOT EXISTS metaserver;
+CREATE SCHEMA IF NOT EXISTS kang;
 
-CREATE OR REPLACE FUNCTION metaserver.ms_generate_uuid()
+CREATE OR REPLACE FUNCTION kang.ms_generate_uuid()
 RETURNS uuid
 LANGUAGE sql
 AS $function$
     SELECT md5(random()::text || clock_timestamp()::text || txid_current()::text)::uuid;
 $function$;
 
-CREATE OR REPLACE FUNCTION metaserver.touch_updated_at()
+CREATE OR REPLACE FUNCTION kang.touch_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $function$
@@ -27,21 +27,21 @@ BEGIN
         SELECT 1
         FROM pg_type t
         JOIN pg_namespace n ON n.oid = t.typnamespace
-        WHERE n.nspname = 'metaserver'
+        WHERE n.nspname = 'kang'
           AND t.typname = 'user_status'
     ) THEN
-        CREATE TYPE metaserver.user_status AS ENUM ('active', 'suspended', 'deleted');
+        CREATE TYPE kang.user_status AS ENUM ('active', 'suspended', 'deleted');
     END IF;
 END $$;
 
-CREATE TABLE IF NOT EXISTS metaserver.users (
-    id uuid DEFAULT metaserver.ms_generate_uuid() NOT NULL,
+CREATE TABLE IF NOT EXISTS kang.users (
+    id uuid DEFAULT kang.ms_generate_uuid() NOT NULL,
     firebase_uid text NOT NULL,
     email text,
     email_verified boolean DEFAULT false NOT NULL,
     display_name text,
     photo_url text,
-    status metaserver.user_status DEFAULT 'active'::metaserver.user_status NOT NULL,
+    status kang.user_status DEFAULT 'active'::kang.user_status NOT NULL,
     last_login_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -60,40 +60,40 @@ CREATE TABLE IF NOT EXISTS metaserver.users (
     deleted_by uuid,
     CONSTRAINT users_pkey PRIMARY KEY (id),
     CONSTRAINT users_firebase_uid_key UNIQUE (firebase_uid),
-    CONSTRAINT fk_users_created_by FOREIGN KEY (created_by) REFERENCES metaserver.users(id),
-    CONSTRAINT fk_users_updated_by FOREIGN KEY (updated_by) REFERENCES metaserver.users(id),
-    CONSTRAINT fk_users_deleted_by FOREIGN KEY (deleted_by) REFERENCES metaserver.users(id)
+    CONSTRAINT fk_users_created_by FOREIGN KEY (created_by) REFERENCES kang.users(id),
+    CONSTRAINT fk_users_updated_by FOREIGN KEY (updated_by) REFERENCES kang.users(id),
+    CONSTRAINT fk_users_deleted_by FOREIGN KEY (deleted_by) REFERENCES kang.users(id)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_user_no
-    ON metaserver.users USING btree (user_no);
+    ON kang.users USING btree (user_no);
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email_not_deleted
-    ON metaserver.users USING btree (lower(email))
+    ON kang.users USING btree (lower(email))
     WHERE email IS NOT NULL AND deleted_at IS NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_login_id_not_deleted
-    ON metaserver.users USING btree (lower((login_id)::text))
+    ON kang.users USING btree (lower((login_id)::text))
     WHERE login_id IS NOT NULL AND deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS ix_users_provider
-    ON metaserver.users USING btree (auth_provider);
+    ON kang.users USING btree (auth_provider);
 
 CREATE INDEX IF NOT EXISTS ix_users_type_active
-    ON metaserver.users USING btree (user_type, is_active);
+    ON kang.users USING btree (user_type, is_active);
 
-COMMENT ON COLUMN metaserver.users.user_no IS 'Sequential user number for admin screens and logs.';
-COMMENT ON COLUMN metaserver.users.login_id IS 'Login ID for local login or admin search. Separate from Firebase UID.';
-COMMENT ON COLUMN metaserver.users.password_hash IS 'Password hash for future local auth. NULL for Firebase-only users.';
-COMMENT ON COLUMN metaserver.users.user_name IS 'User name used in admin screens and profiles.';
-COMMENT ON COLUMN metaserver.users.user_type IS 'User type such as member, admin, operator, or system.';
-COMMENT ON COLUMN metaserver.users.auth_provider IS 'Primary auth provider such as firebase, local, google, apple, or facebook.';
-COMMENT ON COLUMN metaserver.users.mfa_enabled IS 'Whether MFA is enabled.';
-COMMENT ON COLUMN metaserver.users.locked_at IS 'Account lock timestamp.';
-COMMENT ON COLUMN metaserver.users.is_active IS 'Operational active flag managed together with status.';
-COMMENT ON COLUMN metaserver.users.created_by IS 'Internal user ID that created this user.';
-COMMENT ON COLUMN metaserver.users.updated_by IS 'Internal user ID that last updated this user.';
-COMMENT ON COLUMN metaserver.users.deleted_by IS 'Internal user ID that soft-deleted this user.';
+COMMENT ON COLUMN kang.users.user_no IS 'Sequential user number for admin screens and logs.';
+COMMENT ON COLUMN kang.users.login_id IS 'Login ID for local login or admin search. Separate from Firebase UID.';
+COMMENT ON COLUMN kang.users.password_hash IS 'Password hash for future local auth. NULL for Firebase-only users.';
+COMMENT ON COLUMN kang.users.user_name IS 'User name used in admin screens and profiles.';
+COMMENT ON COLUMN kang.users.user_type IS 'User type such as member, admin, operator, or system.';
+COMMENT ON COLUMN kang.users.auth_provider IS 'Primary auth provider such as firebase, local, google, apple, or facebook.';
+COMMENT ON COLUMN kang.users.mfa_enabled IS 'Whether MFA is enabled.';
+COMMENT ON COLUMN kang.users.locked_at IS 'Account lock timestamp.';
+COMMENT ON COLUMN kang.users.is_active IS 'Operational active flag managed together with status.';
+COMMENT ON COLUMN kang.users.created_by IS 'Internal user ID that created this user.';
+COMMENT ON COLUMN kang.users.updated_by IS 'Internal user ID that last updated this user.';
+COMMENT ON COLUMN kang.users.deleted_by IS 'Internal user ID that soft-deleted this user.';
 
 DO $$
 BEGIN
@@ -101,16 +101,16 @@ BEGIN
         SELECT 1
         FROM pg_trigger
         WHERE tgname = 'trg_users_updated_at'
-          AND tgrelid = 'metaserver.users'::regclass
+          AND tgrelid = 'kang.users'::regclass
     ) THEN
         CREATE TRIGGER trg_users_updated_at
-        BEFORE UPDATE ON metaserver.users
+        BEFORE UPDATE ON kang.users
         FOR EACH ROW
-        EXECUTE PROCEDURE metaserver.touch_updated_at();
+        EXECUTE PROCEDURE kang.touch_updated_at();
     END IF;
 END $$;
 
-CREATE TABLE IF NOT EXISTS metaserver.user_profiles (
+CREATE TABLE IF NOT EXISTS kang.user_profiles (
     user_id uuid NOT NULL,
     real_name_encrypted text,
     phone_encrypted text,
@@ -123,11 +123,11 @@ CREATE TABLE IF NOT EXISTS metaserver.user_profiles (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT user_profiles_pkey PRIMARY KEY (user_id),
     CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id)
-        REFERENCES metaserver.users(id) ON DELETE CASCADE
+        REFERENCES kang.users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS metaserver.auth_identities (
-    id uuid DEFAULT metaserver.ms_generate_uuid() NOT NULL,
+CREATE TABLE IF NOT EXISTS kang.auth_identities (
+    id uuid DEFAULT kang.ms_generate_uuid() NOT NULL,
     user_id uuid NOT NULL,
     provider text NOT NULL,
     provider_uid text NOT NULL,
@@ -139,14 +139,14 @@ CREATE TABLE IF NOT EXISTS metaserver.auth_identities (
     CONSTRAINT auth_identities_pkey PRIMARY KEY (id),
     CONSTRAINT auth_identities_provider_provider_uid_key UNIQUE (provider, provider_uid),
     CONSTRAINT auth_identities_user_id_fkey FOREIGN KEY (user_id)
-        REFERENCES metaserver.users(id) ON DELETE CASCADE
+        REFERENCES kang.users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS ix_auth_identities_user_id
-    ON metaserver.auth_identities USING btree (user_id);
+    ON kang.auth_identities USING btree (user_id);
 
-CREATE TABLE IF NOT EXISTS metaserver.roles (
-    id uuid DEFAULT metaserver.ms_generate_uuid() NOT NULL,
+CREATE TABLE IF NOT EXISTS kang.roles (
+    id uuid DEFAULT kang.ms_generate_uuid() NOT NULL,
     code text NOT NULL,
     name text NOT NULL,
     description text,
@@ -155,22 +155,22 @@ CREATE TABLE IF NOT EXISTS metaserver.roles (
     CONSTRAINT roles_code_key UNIQUE (code)
 );
 
-CREATE TABLE IF NOT EXISTS metaserver.user_roles (
+CREATE TABLE IF NOT EXISTS kang.user_roles (
     user_id uuid NOT NULL,
     role_id uuid NOT NULL,
     granted_by uuid,
     granted_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT user_roles_pkey PRIMARY KEY (user_id, role_id),
     CONSTRAINT user_roles_user_id_fkey FOREIGN KEY (user_id)
-        REFERENCES metaserver.users(id) ON DELETE CASCADE,
+        REFERENCES kang.users(id) ON DELETE CASCADE,
     CONSTRAINT user_roles_role_id_fkey FOREIGN KEY (role_id)
-        REFERENCES metaserver.roles(id) ON DELETE CASCADE,
+        REFERENCES kang.roles(id) ON DELETE CASCADE,
     CONSTRAINT user_roles_granted_by_fkey FOREIGN KEY (granted_by)
-        REFERENCES metaserver.users(id)
+        REFERENCES kang.users(id)
 );
 
-CREATE TABLE IF NOT EXISTS metaserver.login_events (
-    id uuid DEFAULT metaserver.ms_generate_uuid() NOT NULL,
+CREATE TABLE IF NOT EXISTS kang.login_events (
+    id uuid DEFAULT kang.ms_generate_uuid() NOT NULL,
     user_id uuid,
     firebase_uid text,
     provider text,
@@ -181,14 +181,14 @@ CREATE TABLE IF NOT EXISTS metaserver.login_events (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT login_events_pkey PRIMARY KEY (id),
     CONSTRAINT login_events_user_id_fkey FOREIGN KEY (user_id)
-        REFERENCES metaserver.users(id) ON DELETE SET NULL
+        REFERENCES kang.users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS ix_login_events_user_created
-    ON metaserver.login_events USING btree (user_id, created_at DESC);
+    ON kang.login_events USING btree (user_id, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS metaserver.user_devices (
-    id uuid DEFAULT metaserver.ms_generate_uuid() NOT NULL,
+CREATE TABLE IF NOT EXISTS kang.user_devices (
+    id uuid DEFAULT kang.ms_generate_uuid() NOT NULL,
     user_id uuid NOT NULL,
     platform text NOT NULL,
     device_id_hash text,
@@ -199,14 +199,14 @@ CREATE TABLE IF NOT EXISTS metaserver.user_devices (
     revoked_at timestamp with time zone,
     CONSTRAINT user_devices_pkey PRIMARY KEY (id),
     CONSTRAINT user_devices_user_id_fkey FOREIGN KEY (user_id)
-        REFERENCES metaserver.users(id) ON DELETE CASCADE
+        REFERENCES kang.users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS ix_user_devices_user_id
-    ON metaserver.user_devices USING btree (user_id);
+    ON kang.user_devices USING btree (user_id);
 
-CREATE TABLE IF NOT EXISTS metaserver.terms_versions (
-    id uuid DEFAULT metaserver.ms_generate_uuid() NOT NULL,
+CREATE TABLE IF NOT EXISTS kang.terms_versions (
+    id uuid DEFAULT kang.ms_generate_uuid() NOT NULL,
     code text NOT NULL,
     title text NOT NULL,
     version text NOT NULL,
@@ -218,8 +218,8 @@ CREATE TABLE IF NOT EXISTS metaserver.terms_versions (
     CONSTRAINT terms_versions_code_version_key UNIQUE (code, version)
 );
 
-CREATE TABLE IF NOT EXISTS metaserver.user_terms_agreements (
-    id uuid DEFAULT metaserver.ms_generate_uuid() NOT NULL,
+CREATE TABLE IF NOT EXISTS kang.user_terms_agreements (
+    id uuid DEFAULT kang.ms_generate_uuid() NOT NULL,
     user_id uuid NOT NULL,
     terms_version_id uuid NOT NULL,
     agreed boolean NOT NULL,
@@ -229,13 +229,13 @@ CREATE TABLE IF NOT EXISTS metaserver.user_terms_agreements (
     CONSTRAINT user_terms_agreements_pkey PRIMARY KEY (id),
     CONSTRAINT user_terms_agreements_user_id_terms_version_id_key UNIQUE (user_id, terms_version_id),
     CONSTRAINT user_terms_agreements_user_id_fkey FOREIGN KEY (user_id)
-        REFERENCES metaserver.users(id) ON DELETE CASCADE,
+        REFERENCES kang.users(id) ON DELETE CASCADE,
     CONSTRAINT user_terms_agreements_terms_version_id_fkey FOREIGN KEY (terms_version_id)
-        REFERENCES metaserver.terms_versions(id)
+        REFERENCES kang.terms_versions(id)
 );
 
-CREATE TABLE IF NOT EXISTS metaserver.audit_events (
-    id uuid DEFAULT metaserver.ms_generate_uuid() NOT NULL,
+CREATE TABLE IF NOT EXISTS kang.audit_events (
+    id uuid DEFAULT kang.ms_generate_uuid() NOT NULL,
     user_id uuid,
     actor_user_id uuid,
     event_type text NOT NULL,
@@ -247,59 +247,21 @@ CREATE TABLE IF NOT EXISTS metaserver.audit_events (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT audit_events_pkey PRIMARY KEY (id),
     CONSTRAINT audit_events_user_id_fkey FOREIGN KEY (user_id)
-        REFERENCES metaserver.users(id) ON DELETE SET NULL,
+        REFERENCES kang.users(id) ON DELETE SET NULL,
     CONSTRAINT audit_events_actor_user_id_fkey FOREIGN KEY (actor_user_id)
-        REFERENCES metaserver.users(id) ON DELETE SET NULL
+        REFERENCES kang.users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS ix_audit_events_user_created
-    ON metaserver.audit_events USING btree (user_id, created_at DESC);
+    ON kang.audit_events USING btree (user_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS ix_audit_events_entity
-    ON metaserver.audit_events USING btree (entity_type, entity_id);
+    ON kang.audit_events USING btree (entity_type, entity_id);
 
--- Family-only login gate.
--- Firebase authenticates the person; this table authorizes whether the person may enter this app.
-CREATE TABLE IF NOT EXISTS metaserver.family_login_allowlist (
-    id uuid DEFAULT metaserver.ms_generate_uuid() NOT NULL,
-    email text NOT NULL,
-    display_name text,
-    relationship text,
-    role_code text DEFAULT 'family_member'::text NOT NULL,
-    status character varying(20) DEFAULT 'invited'::character varying NOT NULL,
-    firebase_uid text,
-    first_accepted_user_id uuid,
-    invited_by uuid,
-    note text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    accepted_at timestamp with time zone,
-    revoked_at timestamp with time zone,
-    CONSTRAINT family_login_allowlist_pkey PRIMARY KEY (id),
-    CONSTRAINT family_login_allowlist_status_check
-        CHECK ((status)::text IN ('invited', 'active', 'revoked')),
-    CONSTRAINT family_login_allowlist_role_code_fkey FOREIGN KEY (role_code)
-        REFERENCES metaserver.roles(code),
-    CONSTRAINT family_login_allowlist_first_user_fkey FOREIGN KEY (first_accepted_user_id)
-        REFERENCES metaserver.users(id) ON DELETE SET NULL,
-    CONSTRAINT family_login_allowlist_invited_by_fkey FOREIGN KEY (invited_by)
-        REFERENCES metaserver.users(id) ON DELETE SET NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_family_login_allowlist_email_not_revoked
-    ON metaserver.family_login_allowlist USING btree (lower(email))
-    WHERE revoked_at IS NULL;
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_family_login_allowlist_firebase_uid
-    ON metaserver.family_login_allowlist USING btree (firebase_uid)
-    WHERE firebase_uid IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS ix_family_login_allowlist_status
-    ON metaserver.family_login_allowlist USING btree (status);
-
-INSERT INTO metaserver.roles (code, name, description)
+INSERT INTO kang.roles (code, name, description)
 VALUES
-    ('family_admin', 'Family Admin', 'Can manage family members and app settings.'),
-    ('family_member', 'Family Member', 'Can use the family app.')
+    ('admin', 'Admin', 'Can manage users and application settings.'),
+    ('member', 'Member', 'Standard application user.')
 ON CONFLICT (code) DO UPDATE
 SET name = EXCLUDED.name,
     description = EXCLUDED.description;

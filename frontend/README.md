@@ -10,6 +10,13 @@ D:\kcastle\kang\frontend
 
 Then select an Android emulator, Chrome, or a connected device and run `lib/main.dart`.
 
+Default API hosts:
+
+- Android emulator: `http://10.0.2.2:8000`
+- Chrome, Windows, macOS, Linux, and iOS simulator: `http://localhost:8000`
+
+Override with `--dart-define=API_BASE_URL=<url>` when using a physical device or deployed backend.
+
 A new Flutter project.
 
 ## Getting Started

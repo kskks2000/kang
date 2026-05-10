@@ -1,1 +1,1 @@
-"""Family login API package."""
+"""Kang API package."""

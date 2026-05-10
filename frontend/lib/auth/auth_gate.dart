@@ -52,7 +52,7 @@ class _AuthGateState extends State<AuthGate> {
           future: _sessionFuture,
           builder: (context, sessionSnapshot) {
             if (sessionSnapshot.connectionState != ConnectionState.done) {
-              return const _LoadingScreen(message: '가족 계정 권한을 확인하고 있습니다.');
+              return const _LoadingScreen(message: '계정 정보를 확인하고 있습니다.');
             }
             if (sessionSnapshot.hasError || !sessionSnapshot.hasData) {
               return _SessionErrorScreen(

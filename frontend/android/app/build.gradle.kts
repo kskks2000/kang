@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.kcastle.kang"
+    namespace = "kr.ai.kang.kang"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.kcastle.kang"
+        applicationId = "kr.ai.kang.kang"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

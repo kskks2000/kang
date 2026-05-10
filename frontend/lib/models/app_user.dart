@@ -5,7 +5,6 @@ class AppUser {
     required this.userName,
     required this.userType,
     required this.roleCode,
-    required this.allowlistStatus,
     this.email,
     this.displayName,
     this.photoUrl,
@@ -21,7 +20,6 @@ class AppUser {
   final String userName;
   final String userType;
   final String roleCode;
-  final String allowlistStatus;
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
     return AppUser(
@@ -34,7 +32,6 @@ class AppUser {
       userName: json['user_name'] as String,
       userType: json['user_type'] as String,
       roleCode: json['role_code'] as String,
-      allowlistStatus: json['allowlist_status'] as String,
     );
   }
 }

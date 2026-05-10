@@ -7,11 +7,11 @@ import 'theme/kang_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final firebaseState = await FirebaseBootstrap.initialize();
-  runApp(FamilyLoginApp(firebaseState: firebaseState));
+  runApp(KangApp(firebaseState: firebaseState));
 }
 
-class FamilyLoginApp extends StatelessWidget {
-  const FamilyLoginApp({super.key, required this.firebaseState});
+class KangApp extends StatelessWidget {
+  const KangApp({super.key, required this.firebaseState});
 
   final FirebaseInitState firebaseState;
 

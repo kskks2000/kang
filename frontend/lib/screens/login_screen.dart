@@ -67,8 +67,8 @@ class _LoginScreenState extends State<LoginScreen> {
     final configError = widget.firebaseReady ? null : widget.firebaseError;
 
     return AuthScaffold(
-      title: 'Kang 로그인',
-      subtitle: '초대된 가족 계정으로 안전하게 입장하세요.',
+      title: '로그인',
+      subtitle: '이메일과 비밀번호로 Kang에 로그인하세요.',
       child: Form(
         key: _formKey,
         child: Column(
@@ -106,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 12),
             OutlinedButton.icon(
               icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('가족 계정 만들기'),
+              label: const Text('회원가입'),
               onPressed: _loading || !widget.firebaseReady
                   ? null
                   : () => _open(const SignUpScreen()),

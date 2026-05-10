@@ -13,7 +13,7 @@ class FirebaseBootstrap {
     if (!DefaultFirebaseOptions.isConfigured) {
       return const FirebaseInitState(
         ready: false,
-        error: 'Firebase API 키와 프로젝트 ID가 필요합니다.',
+        error: 'Firebase 설정값을 확인할 수 없습니다.',
       );
     }
 
@@ -29,8 +29,14 @@ class FirebaseBootstrap {
 }
 
 class DefaultFirebaseOptions {
-  static const apiKey = String.fromEnvironment('FIREBASE_API_KEY');
-  static const projectId = String.fromEnvironment('FIREBASE_PROJECT_ID');
+  static const apiKey = String.fromEnvironment(
+    'FIREBASE_API_KEY',
+    defaultValue: 'AIzaSyCmQjqtitnQriofj3aRr3AheFVV8qOVgc8',
+  );
+  static const projectId = String.fromEnvironment(
+    'FIREBASE_PROJECT_ID',
+    defaultValue: 'kang-84cdd',
+  );
   static const webAppId = String.fromEnvironment(
     'FIREBASE_WEB_APP_ID',
     defaultValue: '1:153980946207:web:3044ef09ff07b6bf9f922a',
@@ -39,9 +45,13 @@ class DefaultFirebaseOptions {
     'FIREBASE_MESSAGING_SENDER_ID',
     defaultValue: '153980946207',
   );
-  static const authDomain = String.fromEnvironment('FIREBASE_AUTH_DOMAIN');
+  static const authDomain = String.fromEnvironment(
+    'FIREBASE_AUTH_DOMAIN',
+    defaultValue: 'kang-84cdd.firebaseapp.com',
+  );
   static const storageBucket = String.fromEnvironment(
     'FIREBASE_STORAGE_BUCKET',
+    defaultValue: 'kang-84cdd.firebasestorage.app',
   );
   static const androidAppId = String.fromEnvironment('FIREBASE_ANDROID_APP_ID');
   static const iosAppId = String.fromEnvironment('FIREBASE_IOS_APP_ID');

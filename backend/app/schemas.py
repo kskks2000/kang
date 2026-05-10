@@ -17,7 +17,6 @@ class UserSession(BaseModel):
     user_name: str
     user_type: str
     role_code: str
-    allowlist_status: str
 
 
 class SessionResponse(BaseModel):

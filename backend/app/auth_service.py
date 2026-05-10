@@ -49,12 +49,20 @@ def _record_login_event(
 ) -> None:
     cur.execute(
         """
-        INSERT INTO metaserver.login_events (
+        INSERT INTO kang.login_events (
             user_id, firebase_uid, provider, success, failure_reason, ip_address, user_agent
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """,
-        (user_id, firebase_uid, provider, success, failure_reason, ip_address, user_agent),
+        (
+            user_id,
+            firebase_uid,
+            provider,
+            success,
+            failure_reason,
+            ip_address,
+            user_agent,
+        ),
     )
 
 
@@ -90,42 +98,13 @@ def create_or_update_session(
                 detail="Firebase 계정의 이메일 정보를 확인할 수 없습니다.",
             )
 
-        cur.execute(
-            """
-            SELECT id, email, display_name, role_code, status, firebase_uid
-            FROM metaserver.family_login_allowlist
-            WHERE revoked_at IS NULL
-              AND (lower(email) = lower(%s) OR firebase_uid = %s)
-            ORDER BY CASE WHEN firebase_uid = %s THEN 0 ELSE 1 END, created_at DESC
-            LIMIT 1
-            """,
-            (email, firebase_uid, firebase_uid),
-        )
-        allowlist = cur.fetchone()
-        if not allowlist:
-            _record_login_event(
-                cur,
-                user_id=None,
-                firebase_uid=firebase_uid,
-                provider=provider,
-                success=False,
-                failure_reason="not_allowlisted",
-                ip_address=ip_address,
-                user_agent=user_agent,
-            )
-            conn.commit()
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="가족 계정으로 등록된 이메일만 사용할 수 있습니다.",
-            )
-
-        role_code = allowlist["role_code"] or "family_member"
-        preferred_name = display_name or allowlist["display_name"] or email.split("@", 1)[0]
+        role_code = "member"
+        preferred_name = display_name or email.split("@", 1)[0]
 
         cur.execute(
             """
             SELECT id
-            FROM metaserver.users
+            FROM kang.users
             WHERE firebase_uid = %s
                OR (lower(email) = lower(%s) AND deleted_at IS NULL)
             ORDER BY CASE WHEN firebase_uid = %s THEN 0 ELSE 1 END
@@ -138,7 +117,7 @@ def create_or_update_session(
         if existing_user:
             cur.execute(
                 """
-                UPDATE metaserver.users
+                UPDATE kang.users
                 SET firebase_uid = %s,
                     email = %s,
                     email_verified = %s,
@@ -169,7 +148,7 @@ def create_or_update_session(
         else:
             cur.execute(
                 """
-                INSERT INTO metaserver.users (
+                INSERT INTO kang.users (
                     firebase_uid, email, email_verified, display_name, photo_url,
                     last_login_at, login_id, user_name, user_type, auth_provider, is_active
                 )
@@ -209,7 +188,7 @@ def create_or_update_session(
 
         cur.execute(
             """
-            INSERT INTO metaserver.user_profiles (user_id)
+            INSERT INTO kang.user_profiles (user_id)
             VALUES (%s)
             ON CONFLICT (user_id) DO NOTHING
             """,
@@ -218,7 +197,7 @@ def create_or_update_session(
 
         cur.execute(
             """
-            INSERT INTO metaserver.auth_identities (
+            INSERT INTO kang.auth_identities (
                 user_id, provider, provider_uid, email, email_verified, raw_claims
             )
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -239,28 +218,24 @@ def create_or_update_session(
             ),
         )
 
-        cur.execute("SELECT id FROM metaserver.roles WHERE code = %s", (role_code,))
-        role = cur.fetchone()
-        if role:
-            cur.execute(
-                """
-                INSERT INTO metaserver.user_roles (user_id, role_id)
-                VALUES (%s, %s)
-                ON CONFLICT (user_id, role_id) DO NOTHING
-                """,
-                (user["id"], role["id"]),
-            )
-
         cur.execute(
             """
-            UPDATE metaserver.family_login_allowlist
-            SET firebase_uid = COALESCE(firebase_uid, %s),
-                first_accepted_user_id = COALESCE(first_accepted_user_id, %s),
-                status = 'active',
-                accepted_at = COALESCE(accepted_at, now())
-            WHERE id = %s
+            INSERT INTO kang.roles (code, name, description)
+            VALUES ('member', 'Member', 'Standard application user.')
+            ON CONFLICT (code) DO UPDATE
+            SET name = EXCLUDED.name,
+                description = EXCLUDED.description
+            RETURNING id
+            """
+        )
+        role = cur.fetchone()
+        cur.execute(
+            """
+            INSERT INTO kang.user_roles (user_id, role_id)
+            VALUES (%s, %s)
+            ON CONFLICT (user_id, role_id) DO NOTHING
             """,
-            (firebase_uid, user["id"], allowlist["id"]),
+            (user["id"], role["id"]),
         )
 
         _record_login_event(
@@ -285,7 +260,6 @@ def create_or_update_session(
                 "user_name": user["user_name"],
                 "user_type": user["user_type"],
                 "role_code": role_code,
-                "allowlist_status": "active",
             }
         }
 
@@ -296,7 +270,7 @@ def find_login_id(conn: Connection, *, email: str) -> dict[str, Any]:
         cur.execute(
             """
             SELECT login_id, email
-            FROM metaserver.users
+            FROM kang.users
             WHERE lower(email) = lower(%s)
               AND deleted_at IS NULL
               AND is_active = true
@@ -311,24 +285,6 @@ def find_login_id(conn: Connection, *, email: str) -> dict[str, Any]:
                 "found": True,
                 "masked_login_id": _mask_login_id(login_id),
                 "message": "가입된 ID를 찾았습니다.",
-            }
-
-        cur.execute(
-            """
-            SELECT email
-            FROM metaserver.family_login_allowlist
-            WHERE lower(email) = lower(%s)
-              AND revoked_at IS NULL
-            LIMIT 1
-            """,
-            (normalized_email,),
-        )
-        allowlist = cur.fetchone()
-        if allowlist:
-            return {
-                "found": True,
-                "masked_login_id": _mask_login_id(allowlist["email"]),
-                "message": "가족 초대 목록에 등록된 ID입니다. 회원가입을 진행해 주세요.",
             }
 
         return {

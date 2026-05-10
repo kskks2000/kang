@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/auth_api.dart';
 import '../widgets/auth_fields.dart';
 import '../widgets/auth_scaffold.dart';
 
@@ -17,6 +18,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _authApi = AuthApi();
 
   bool _loading = false;
   String? _error;
@@ -46,14 +48,38 @@ class _SignUpScreenState extends State<SignUpScreen> {
             email: _emailController.text.trim(),
             password: _passwordController.text,
           );
-      await credential.user?.updateDisplayName(_nameController.text.trim());
-      await credential.user?.sendEmailVerification();
+      final user = credential.user;
+
+      try {
+        await user?.updateDisplayName(_nameController.text.trim());
+        final token = await user?.getIdToken(true);
+        if (token == null || token.isEmpty) {
+          throw const ApiException('Firebase 로그인 토큰이 비어 있습니다.');
+        }
+        await _authApi.createSession(token);
+        await user?.sendEmailVerification();
+      } catch (error) {
+        await _rollbackFirebaseUser(user);
+        rethrow;
+      }
 
       if (mounted) {
         Navigator.of(context).pop();
       }
     } on FirebaseAuthException catch (error) {
+      if (error.code == 'email-already-in-use') {
+        final recoveryMessage = await _completeExistingFirebaseAccount();
+        if (recoveryMessage == null) {
+          return;
+        }
+        if (mounted) {
+          setState(() => _error = recoveryMessage);
+        }
+        return;
+      }
       setState(() => _error = _firebaseMessage(error));
+    } on ApiException catch (error) {
+      setState(() => _error = error.message);
     } catch (error) {
       setState(() => _error = error.toString());
     } finally {
@@ -63,11 +89,63 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
+  Future<String?> _completeExistingFirebaseAccount() async {
+    try {
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+      final user = credential.user;
+      if (user == null) {
+        return 'Firebase 계정을 확인할 수 없습니다.';
+      }
+
+      final displayName = (user.displayName ?? '').trim();
+      if (displayName.isEmpty) {
+        await user.updateDisplayName(_nameController.text.trim());
+      }
+
+      final token = await user.getIdToken(true);
+      if (token == null || token.isEmpty) {
+        return 'Firebase 로그인 토큰이 비어 있습니다.';
+      }
+
+      await _authApi.createSession(token);
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      return null;
+    } on FirebaseAuthException catch (error) {
+      if (error.code == 'wrong-password' ||
+          error.code == 'invalid-credential' ||
+          error.code == 'invalid-login-credentials') {
+        return '이미 Firebase 인증에 가입된 이메일입니다. 기존 비밀번호로 로그인하거나 비밀번호 찾기를 이용해 주세요.';
+      }
+      return _firebaseMessage(error);
+    } on ApiException catch (error) {
+      return error.message;
+    } catch (error) {
+      return error.toString();
+    }
+  }
+
+  Future<void> _rollbackFirebaseUser(User? user) async {
+    try {
+      await user?.delete();
+    } on FirebaseAuthException {
+      await FirebaseAuth.instance.signOut();
+    } finally {
+      if (FirebaseAuth.instance.currentUser != null) {
+        await FirebaseAuth.instance.signOut();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AuthScaffold(
-      title: '가족 계정 만들기',
-      subtitle: 'Kang에 초대된 이메일로 계정을 만듭니다.',
+      title: '회원가입',
+      subtitle: '이름, 이메일, 비밀번호를 입력해 계정을 만듭니다.',
       child: Form(
         key: _formKey,
         child: Column(
@@ -148,7 +226,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String _firebaseMessage(FirebaseAuthException error) {
     switch (error.code) {
       case 'email-already-in-use':
-        return '이미 가입된 이메일입니다.';
+        return '이미 Firebase 인증에 가입된 이메일입니다. 로그인하거나 비밀번호 찾기를 이용해 주세요.';
       case 'invalid-email':
         return '올바른 이메일 형식이 아닙니다.';
       case 'weak-password':
