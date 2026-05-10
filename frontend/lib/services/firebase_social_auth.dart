@@ -27,7 +27,11 @@ class FirebaseSocialAuth {
       case 'operation-not-allowed':
         return 'Firebase 콘솔에서 Google 로그인 제공업체를 활성화해야 합니다.';
       case 'unauthorized-domain':
-        return 'Firebase 인증 허용 도메인에 현재 사이트 주소를 추가해야 합니다.';
+        final host = Uri.base.host;
+        if (host.isEmpty) {
+          return 'Firebase 인증 허용 도메인에 현재 사이트 주소를 추가해야 합니다.';
+        }
+        return 'Firebase 인증 허용 도메인에 $host를 추가해야 합니다.';
       case 'network-request-failed':
         return '네트워크 연결을 확인한 뒤 다시 시도해 주세요.';
       default:
