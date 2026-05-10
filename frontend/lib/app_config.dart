@@ -9,7 +9,11 @@ class AppConfig {
     }
 
     if (kIsWeb) {
-      return 'http://localhost:8000';
+      final host = Uri.base.host;
+      if (host == 'localhost' || host == '127.0.0.1') {
+        return 'http://localhost:8000';
+      }
+      return Uri.base.origin;
     }
 
     return switch (defaultTargetPlatform) {

@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/firebase_social_auth.dart';
 import '../widgets/auth_fields.dart';
 import '../widgets/auth_scaffold.dart';
 import 'find_id_screen.dart';
@@ -28,6 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _loading = false;
   String? _error;
+  String? _success;
 
   @override
   void dispose() {
@@ -44,6 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _success = null;
     });
 
     try {
@@ -53,6 +56,30 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on FirebaseAuthException catch (error) {
       setState(() => _error = _firebaseMessage(error));
+    } catch (error) {
+      setState(() => _error = error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    if (!widget.firebaseReady || _loading) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+      _success = null;
+    });
+
+    try {
+      await FirebaseSocialAuth.signInWithGoogle();
+    } on FirebaseAuthException catch (error) {
+      setState(() => _error = FirebaseSocialAuth.googleErrorMessage(error));
     } catch (error) {
       setState(() => _error = error.toString());
     } finally {
@@ -82,6 +109,10 @@ class _LoginScreenState extends State<LoginScreen> {
               AuthErrorText(message: _error!),
               const SizedBox(height: 16),
             ],
+            if (_success != null) ...[
+              AuthSuccessText(message: _success!),
+              const SizedBox(height: 16),
+            ],
             EmailField(controller: _emailController),
             const SizedBox(height: 12),
             PasswordField(
@@ -103,13 +134,19 @@ class _LoginScreenState extends State<LoginScreen> {
               label: const Text('로그인'),
               onPressed: _loading || !widget.firebaseReady ? null : _submit,
             ),
+            const SizedBox(height: 18),
+            const AuthDivider(label: '또는 Google로 로그인'),
+            const SizedBox(height: 18),
+            GoogleAuthButton(
+              label: 'Google로 로그인',
+              loading: _loading,
+              onPressed: widget.firebaseReady ? _signInWithGoogle : null,
+            ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               icon: const Icon(Icons.person_add_alt_1),
               label: const Text('회원가입'),
-              onPressed: _loading || !widget.firebaseReady
-                  ? null
-                  : () => _open(const SignUpScreen()),
+              onPressed: _loading || !widget.firebaseReady ? null : _openSignUp,
             ),
             const Divider(height: 28),
             Wrap(
@@ -145,6 +182,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _open(Widget screen) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+
+  Future<void> _openSignUp() async {
+    final result = await Navigator.of(context).push<SignUpResult>(
+      MaterialPageRoute(builder: (_) => const SignUpScreen()),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+    setState(() {
+      _error = null;
+      _success = result.message;
+    });
   }
 
   String _firebaseMessage(FirebaseAuthException error) {

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -10,10 +12,10 @@ class SessionRequest(BaseModel):
 class UserSession(BaseModel):
     id: str
     firebase_uid: str
-    email: str | None
-    display_name: str | None
-    photo_url: str | None
-    user_no: int | None
+    email: Optional[str]
+    display_name: Optional[str]
+    photo_url: Optional[str]
+    user_no: Optional[int]
     user_name: str
     user_type: str
     role_code: str
@@ -29,5 +31,5 @@ class FindLoginIdRequest(BaseModel):
 
 class FindLoginIdResponse(BaseModel):
     found: bool
-    masked_login_id: str | None = None
+    masked_login_id: Optional[str] = None
     message: str
