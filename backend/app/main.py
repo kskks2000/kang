@@ -4,9 +4,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .auth_service import create_or_update_session, find_login_id
+from .calendar_service import load_calendar_events
 from .db import get_db
 from .firebase_auth import verify_firebase_id_token
 from .schemas import (
+    CalendarEventsRequest,
+    CalendarEventsResponse,
     FindLoginIdRequest,
     FindLoginIdResponse,
     SessionRequest,
@@ -54,3 +57,15 @@ def create_session(payload: SessionRequest, request: Request) -> dict:
 def find_login_id_endpoint(payload: FindLoginIdRequest) -> dict:
     with get_db() as conn:
         return find_login_id(conn, email=payload.email)
+
+
+@app.post("/calendar/events", response_model=CalendarEventsResponse)
+def calendar_events(payload: CalendarEventsRequest) -> dict:
+    verify_firebase_id_token(payload.id_token)
+    events = load_calendar_events(
+        access_token=payload.google_access_token,
+        time_min=payload.time_min,
+        time_max=payload.time_max,
+        max_results=payload.max_results,
+    )
+    return {"events": events}

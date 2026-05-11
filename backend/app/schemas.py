@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -33,3 +34,24 @@ class FindLoginIdResponse(BaseModel):
     found: bool
     masked_login_id: Optional[str] = None
     message: str
+
+
+class CalendarEventsRequest(BaseModel):
+    id_token: str = Field(min_length=20)
+    google_access_token: str = Field(min_length=20)
+    time_min: datetime
+    time_max: datetime
+    max_results: int = Field(default=50, ge=1, le=100)
+
+
+class CalendarEvent(BaseModel):
+    id: str
+    title: str
+    start: Optional[str] = None
+    end: Optional[str] = None
+    location: Optional[str] = None
+    all_day: bool = False
+
+
+class CalendarEventsResponse(BaseModel):
+    events: list[CalendarEvent]

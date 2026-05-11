@@ -1,4 +1,5 @@
 .env
+.firebase/
 backend/.env
 backend/.env*
 backend/.venv/

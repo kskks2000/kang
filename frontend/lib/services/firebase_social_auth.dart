@@ -8,20 +8,33 @@ class FirebaseSocialAuth {
       'https://www.googleapis.com/auth/calendar.events';
   static const calendarEventsReadonlyScope =
       'https://www.googleapis.com/auth/calendar.events.readonly';
+  static String? _calendarAccessToken;
 
-  static Future<UserCredential> signInWithGoogle() {
-    final provider = _googleProvider();
+  static String? get cachedCalendarAccessToken => _calendarAccessToken;
 
-    if (kIsWeb) {
-      return FirebaseAuth.instance.signInWithPopup(provider);
-    }
-    return FirebaseAuth.instance.signInWithProvider(provider);
+  static void clearCachedGoogleCalendarAccessToken() {
+    _calendarAccessToken = null;
   }
 
-  static Future<String> requestGoogleCalendarAccessToken() async {
+  static Future<UserCredential> signInWithGoogle() async {
+    final provider = _googleProvider(scopes: const [calendarEventsScope]);
+
+    final credential = await _signInWithProvider(provider);
+    _rememberGoogleAccessToken(credential);
+    return credential;
+  }
+
+  static Future<String> requestGoogleCalendarAccessToken({
+    bool forceConsent = true,
+  }) async {
+    final cachedToken = _calendarAccessToken;
+    if (cachedToken != null && cachedToken.isNotEmpty) {
+      return cachedToken;
+    }
+
     final provider = _googleProvider(
       scopes: const [calendarEventsScope],
-      promptConsent: true,
+      promptConsent: forceConsent,
     );
     final currentUser = FirebaseAuth.instance.currentUser;
     final credential = currentUser == null
@@ -36,6 +49,7 @@ class FirebaseSocialAuth {
       );
     }
 
+    _calendarAccessToken = accessToken;
     return accessToken;
   }
 
@@ -53,6 +67,7 @@ class FirebaseSocialAuth {
 
     provider.setCustomParameters({
       'prompt': promptConsent ? 'consent select_account' : 'select_account',
+      'include_granted_scopes': 'true',
     });
 
     return provider;
@@ -65,6 +80,13 @@ class FirebaseSocialAuth {
       return FirebaseAuth.instance.signInWithPopup(provider);
     }
     return FirebaseAuth.instance.signInWithProvider(provider);
+  }
+
+  static void _rememberGoogleAccessToken(UserCredential credential) {
+    final accessToken = credential.credential?.accessToken;
+    if (accessToken != null && accessToken.isNotEmpty) {
+      _calendarAccessToken = accessToken;
+    }
   }
 
   static String googleErrorMessage(FirebaseAuthException error) {

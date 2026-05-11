@@ -2,20 +2,35 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
+import '../services/firebase_social_auth.dart';
 import '../services/google_calendar_service.dart';
 import '../theme/kang_theme.dart';
 import '../widgets/kang_mark.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.user});
 
   final AppUser user;
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final GoogleCalendarService _calendarService = GoogleCalendarService();
+  late Future<GoogleCalendarPreview> _todayCalendarPreview;
+
+  @override
+  void initState() {
+    super.initState();
+    _todayCalendarPreview = _loadTodayCalendarPreview();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final displayName = user.displayName?.trim().isNotEmpty == true
-        ? user.displayName!.trim()
-        : user.userName;
+    final displayName = widget.user.displayName?.trim().isNotEmpty == true
+        ? widget.user.displayName!.trim()
+        : widget.user.userName;
     final modules = _homeModules();
 
     return Scaffold(
@@ -27,7 +42,10 @@ class HomeScreen extends StatelessWidget {
           IconButton(
             tooltip: '로그아웃',
             icon: const Icon(Icons.logout_rounded),
-            onPressed: () => FirebaseAuth.instance.signOut(),
+            onPressed: () {
+              FirebaseSocialAuth.clearCachedGoogleCalendarAccessToken();
+              FirebaseAuth.instance.signOut();
+            },
           ),
         ],
       ),
@@ -60,12 +78,17 @@ class HomeScreen extends StatelessWidget {
                       children: [
                         _HeroHeader(
                           displayName: displayName,
-                          email: user.email ?? 'Kang 계정',
+                          email: widget.user.email ?? 'Kang 계정',
                         ),
                         const SizedBox(height: 22),
                         const _ConnectionStatusPanel(),
                         const SizedBox(height: 18),
-                        _ModuleGrid(modules: modules),
+                        _ModuleGrid(
+                          modules: modules,
+                          calendarPreview: _todayCalendarPreview,
+                          onCalendarPreviewRefresh:
+                              _refreshTodayCalendarPreview,
+                        ),
                       ],
                     ),
                   ),
@@ -148,6 +171,18 @@ class HomeScreen extends StatelessWidget {
         screenIcon: Icons.tune_rounded,
       ),
     ];
+  }
+
+  Future<GoogleCalendarPreview> _loadTodayCalendarPreview() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return _calendarService.loadEventsForDate(today, interactive: false);
+  }
+
+  void _refreshTodayCalendarPreview() {
+    setState(() {
+      _todayCalendarPreview = _loadTodayCalendarPreview();
+    });
   }
 }
 
@@ -277,9 +312,15 @@ class _ConnectionStatusPanel extends StatelessWidget {
 }
 
 class _ModuleGrid extends StatelessWidget {
-  const _ModuleGrid({required this.modules});
+  const _ModuleGrid({
+    required this.modules,
+    required this.calendarPreview,
+    required this.onCalendarPreviewRefresh,
+  });
 
   final List<_HomeModule> modules;
+  final Future<GoogleCalendarPreview> calendarPreview;
+  final VoidCallback onCalendarPreviewRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +342,13 @@ class _ModuleGrid extends StatelessWidget {
             for (final module in modules)
               SizedBox(
                 width: itemWidth,
-                child: _ModuleTile(module: module),
+                child: module.kind == _HomeModuleKind.calendar
+                    ? _CalendarModuleTile(
+                        module: module,
+                        preview: calendarPreview,
+                        onRefresh: onCalendarPreviewRefresh,
+                      )
+                    : _ModuleTile(module: module),
               ),
           ],
         );
@@ -382,6 +429,223 @@ class _ModuleTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CalendarModuleTile extends StatelessWidget {
+  const _CalendarModuleTile({
+    required this.module,
+    required this.preview,
+    required this.onRefresh,
+  });
+
+  final _HomeModule module;
+  final Future<GoogleCalendarPreview> preview;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.84),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => Navigator.of(context)
+            .push(
+              MaterialPageRoute(builder: (_) => _FeatureScreen(module: module)),
+            )
+            .then((_) => onRefresh()),
+        child: Ink(
+          height: 184,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: module.accent.withValues(alpha: 0.18)),
+            boxShadow: [
+              BoxShadow(
+                color: KangColors.deepPurple.withValues(alpha: 0.06),
+                blurRadius: 22,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: module.surface,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(module.icon, color: module.accent, size: 19),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    color: KangColors.slate.withValues(alpha: 0.64),
+                    size: 18,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 13),
+              Text(
+                module.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '오늘 Google Calendar 일정',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontSize: 12,
+                  color: KangColors.slate,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: FutureBuilder<GoogleCalendarPreview>(
+                  future: preview,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return _CalendarHomeStatus(
+                        color: module.accent,
+                        pill: '확인 중',
+                        message: '오늘 일정을 불러오고 있습니다.',
+                      );
+                    }
+
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      return _CalendarHomeStatus(
+                        color: module.accent,
+                        pill: '연결 필요',
+                        message: '캘린더 권한을 연결하면 일정이 표시됩니다.',
+                      );
+                    }
+
+                    final events = snapshot.data!.events;
+                    if (events.isEmpty) {
+                      return _CalendarHomeStatus(
+                        color: module.accent,
+                        pill: '오늘 0개',
+                        message: '오늘 등록된 일정이 없습니다.',
+                      );
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _StatusPill(
+                          text: '오늘 ${events.length}개',
+                          color: module.accent,
+                        ),
+                        const SizedBox(height: 7),
+                        for (final event in events.take(2))
+                          _CalendarHomeEventLine(event: event),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarHomeStatus extends StatelessWidget {
+  const _CalendarHomeStatus({
+    required this.color,
+    required this.pill,
+    required this.message,
+  });
+
+  final Color color;
+  final String pill;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _StatusPill(text: pill, color: color),
+        const SizedBox(height: 8),
+        Text(
+          message,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: KangColors.slate,
+            height: 1.25,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CalendarHomeEventLine extends StatelessWidget {
+  const _CalendarHomeEventLine({required this.event});
+
+  final GoogleCalendarEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
+        children: [
+          Text(
+            _timeText(event),
+            style: const TextStyle(
+              color: KangColors.royalPurple,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              event.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: KangColors.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _timeText(GoogleCalendarEvent event) {
+    if (event.allDay) {
+      return '종일';
+    }
+
+    final start = event.start?.toLocal();
+    if (start == null) {
+      return '시간 없음';
+    }
+
+    return '${_two(start.hour)}:${_two(start.minute)}';
+  }
+
+  static String _two(int value) => value.toString().padLeft(2, '0');
 }
 
 class _StatusPill extends StatelessWidget {
@@ -587,19 +851,39 @@ class _CalendarFeaturePanelState extends State<_CalendarFeaturePanel> {
   bool _loading = false;
   GoogleCalendarPreview? _preview;
   String? _error;
+  late DateTime _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selectedDate = DateTime(now.year, now.month, now.day);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDate(_selectedDate, interactive: false);
+    });
+  }
 
   Future<void> _connect() async {
+    await _loadDate(_selectedDate, interactive: true);
+  }
+
+  Future<void> _loadDate(DateTime date, {bool interactive = false}) async {
     if (_loading) {
       return;
     }
 
+    final normalizedDate = DateTime(date.year, date.month, date.day);
     setState(() {
       _loading = true;
       _error = null;
+      _selectedDate = normalizedDate;
     });
 
     try {
-      final preview = await _calendarService.loadUpcomingEvents();
+      final preview = await _calendarService.loadEventsForDate(
+        normalizedDate,
+        interactive: interactive,
+      );
       if (!mounted) {
         return;
       }
@@ -614,6 +898,27 @@ class _CalendarFeaturePanelState extends State<_CalendarFeaturePanel> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  Future<void> _moveDate(int days) {
+    return _loadDate(_selectedDate.add(Duration(days: days)));
+  }
+
+  Future<void> _pickDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (pickedDate != null) {
+      await _loadDate(pickedDate);
+    }
+  }
+
+  Future<void> _goToday() {
+    final now = DateTime.now();
+    return _loadDate(DateTime(now.year, now.month, now.day));
   }
 
   @override
@@ -646,17 +951,19 @@ class _CalendarFeaturePanelState extends State<_CalendarFeaturePanel> {
                   ),
                 ),
                 _StatusPill(
-                  text: connected ? 'Connected' : 'Needs access',
+                  text: connected ? '연결됨' : '연결 필요',
                   color: widget.module.accent,
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            Text(
-              'Connect this account to Google Calendar and verify API access by loading upcoming events.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(fontSize: 13),
+            _CalendarDateNavigator(
+              date: _selectedDate,
+              loading: _loading,
+              onPrevious: () => _moveDate(-1),
+              onNext: () => _moveDate(1),
+              onPickDate: _pickDate,
+              onToday: _goToday,
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
@@ -670,9 +977,7 @@ class _CalendarFeaturePanelState extends State<_CalendarFeaturePanel> {
                       ),
                     )
                   : const Icon(Icons.sync_rounded),
-              label: Text(
-                connected ? 'Refresh Calendar' : 'Connect Google Calendar',
-              ),
+              label: Text(connected ? '일정 새로고침' : 'Google Calendar 연결'),
               onPressed: _loading ? null : _connect,
             ),
             if (_error != null) ...[
@@ -685,31 +990,16 @@ class _CalendarFeaturePanelState extends State<_CalendarFeaturePanel> {
             ],
             if (connected) ...[
               const SizedBox(height: 16),
-              _ReadinessRow(
-                icon: Icons.key_outlined,
-                label: 'OAuth scope',
-                value: 'calendar.events',
+              _CalendarDayHeader(
+                date: _selectedDate,
+                eventCount: events.length,
                 color: widget.module.accent,
               ),
-              const SizedBox(height: 10),
-              _ReadinessRow(
-                icon: Icons.cloud_done_outlined,
-                label: 'Calendar API',
-                value: 'Ready',
-                color: widget.module.accent,
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Upcoming events',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               if (events.isEmpty)
                 const _CalendarMessage(
                   icon: Icons.event_available_outlined,
-                  text: 'No upcoming events found.',
+                  text: '선택한 날짜에 등록된 일정이 없습니다.',
                   color: KangColors.slate,
                 )
               else
@@ -726,18 +1016,123 @@ class _CalendarFeaturePanelState extends State<_CalendarFeaturePanel> {
       return switch (error.code) {
         'popup-closed-by-user' ||
         'web-context-cancelled' ||
-        'cancelled-popup-request' =>
-          'Google Calendar authorization was canceled.',
+        'cancelled-popup-request' => 'Google Calendar 권한 요청이 취소되었습니다.',
         'missing-google-access-token' =>
-          'Google did not return a Calendar access token. Check OAuth client and scope settings.',
+          '아직 Calendar 권한 토큰이 없습니다. Google Calendar 연결 버튼을 눌러 권한을 허용해 주세요.',
         'calendar-scope-denied' =>
-          'Google Calendar permission was denied or expired. Please authorize again.',
+          'Google Calendar 권한이 거부되었거나 만료되었습니다. 다시 연결해 주세요.',
         'account-exists-with-different-credential' =>
-          'This Google account is already connected to another Firebase account.',
-        _ => error.message ?? 'Google Calendar authorization failed.',
+          '이 Google 계정은 다른 Firebase 계정에 이미 연결되어 있습니다.',
+        _ => error.message ?? 'Google Calendar 연결에 실패했습니다.',
       };
     }
     return error.toString();
+  }
+}
+
+class _CalendarDateNavigator extends StatelessWidget {
+  const _CalendarDateNavigator({
+    required this.date,
+    required this.loading,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onPickDate,
+    required this.onToday,
+  });
+
+  final DateTime date;
+  final bool loading;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback onPickDate;
+  final VoidCallback onToday;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+        final dateButton = OutlinedButton.icon(
+          icon: const Icon(Icons.calendar_today_outlined),
+          label: Text(
+            _CalendarDateText.full(date),
+            overflow: TextOverflow.ellipsis,
+          ),
+          onPressed: loading ? null : onPickDate,
+        );
+
+        final controls = [
+          IconButton.outlined(
+            tooltip: '전날',
+            icon: const Icon(Icons.chevron_left_rounded),
+            onPressed: loading ? null : onPrevious,
+          ),
+          if (compact) Expanded(child: dateButton) else dateButton,
+          IconButton.outlined(
+            tooltip: '다음날',
+            icon: const Icon(Icons.chevron_right_rounded),
+            onPressed: loading ? null : onNext,
+          ),
+          TextButton(
+            onPressed: loading ? null : onToday,
+            child: const Text('오늘'),
+          ),
+        ];
+
+        if (compact) {
+          return Row(children: controls);
+        }
+
+        return Row(
+          children: [...controls.take(3), const Spacer(), controls.last],
+        );
+      },
+    );
+  }
+}
+
+class _CalendarDayHeader extends StatelessWidget {
+  const _CalendarDayHeader({
+    required this.date,
+    required this.eventCount,
+    required this.color,
+  });
+
+  final DateTime date;
+  final int eventCount;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Icon(Icons.view_day_outlined, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${_CalendarDateText.short(date)} 일정',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: KangColors.ink,
+                ),
+              ),
+            ),
+            Text(
+              '$eventCount개',
+              style: TextStyle(color: color, fontWeight: FontWeight.w900),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -749,38 +1144,98 @@ class _CalendarEventTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: KangColors.mintSoft.withValues(alpha: 0.55),
+        color: Colors.white.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: KangColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.deepPurple.withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.event_note_outlined,
-            size: 20,
-            color: KangColors.royalPurple,
+          Container(
+            width: 76,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            decoration: BoxDecoration(
+              color: KangColors.mintSoft,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              _formatEventStart(event),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: KangColors.royalPurple,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   event.title,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: KangColors.ink,
+                  ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  _formatEventTime(event.start),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.schedule_rounded,
+                      size: 15,
+                      color: KangColors.slate,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        _formatEventRange(event),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: KangColors.slate,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+                if (event.location != null) ...[
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.place_outlined,
+                        size: 15,
+                        color: KangColors.slate,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          event.location!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: KangColors.slate),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -789,13 +1244,55 @@ class _CalendarEventTile extends StatelessWidget {
     );
   }
 
-  static String _formatEventTime(DateTime? value) {
-    if (value == null) {
-      return 'Time not set';
+  static String _formatEventStart(GoogleCalendarEvent event) {
+    if (event.allDay) {
+      return '종일';
     }
-    final local = value.toLocal();
-    return '${local.year}-${_two(local.month)}-${_two(local.day)} '
-        '${_two(local.hour)}:${_two(local.minute)}';
+
+    final start = event.start;
+    if (start == null) {
+      return '시간 없음';
+    }
+
+    final local = start.toLocal();
+    return '${_two(local.hour)}:${_two(local.minute)}';
+  }
+
+  static String _formatEventRange(GoogleCalendarEvent event) {
+    if (event.allDay) {
+      return '종일 일정';
+    }
+
+    final start = event.start?.toLocal();
+    final end = event.end?.toLocal();
+    if (start == null) {
+      return '시간이 지정되지 않았습니다.';
+    }
+
+    if (end == null) {
+      return '${_two(start.hour)}:${_two(start.minute)}';
+    }
+
+    return '${_two(start.hour)}:${_two(start.minute)} - '
+        '${_two(end.hour)}:${_two(end.minute)}';
+  }
+
+  static String _two(int value) => value.toString().padLeft(2, '0');
+}
+
+class _CalendarDateText {
+  const _CalendarDateText._();
+
+  static const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+
+  static String full(DateTime date) {
+    return '${date.year}.${_two(date.month)}.${_two(date.day)} '
+        '(${_weekdays[date.weekday - 1]})';
+  }
+
+  static String short(DateTime date) {
+    return '${_two(date.month)}.${_two(date.day)} '
+        '(${_weekdays[date.weekday - 1]})';
   }
 
   static String _two(int value) => value.toString().padLeft(2, '0');
