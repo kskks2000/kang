@@ -75,13 +75,22 @@ def load_settings() -> Settings:
         "CORS_ALLOWED_ORIGINS",
         "http://localhost:3000,http://localhost:5000,http://localhost:8080,"
         "http://127.0.0.1:3000,http://127.0.0.1:5000,http://127.0.0.1:8080,"
+        "https://kang-84cdd.web.app,https://kang-84cdd.firebaseapp.com,"
         "https://www.kang.ai.kr,https://kang.ai.kr,"
         "http://www.kang.ai.kr,http://kang.ai.kr",
     )
 
+    firebase_project_id = (
+        os.getenv("KANG_FIREBASE_PROJECT_ID")
+        or os.getenv("FIREBASE_PROJECT_ID")
+        or os.getenv("GCLOUD_PROJECT")
+        or os.getenv("GOOGLE_CLOUD_PROJECT")
+        or ""
+    )
+
     return Settings(
         database_url=database_url,
-        firebase_project_id=os.getenv("FIREBASE_PROJECT_ID", ""),
+        firebase_project_id=firebase_project_id,
         cors_allowed_origins=_csv(cors_origins),
     )
 

@@ -71,7 +71,33 @@ class _AuthGateState extends State<AuthGate> {
     if (token == null || token.isEmpty) {
       throw const ApiException('Firebase 로그인 토큰이 비어 있습니다.');
     }
-    return _authApi.createSession(token);
+    try {
+      return await _authApi.createSession(token);
+    } catch (_) {
+      return _firebaseOnlySession(user);
+    }
+  }
+
+  AppUser _firebaseOnlySession(User user) {
+    final email = user.email?.trim();
+    final fallbackName = email?.split('@').first.trim();
+    final displayName = user.displayName?.trim();
+    final userName = displayName?.isNotEmpty == true
+        ? displayName!
+        : fallbackName?.isNotEmpty == true
+        ? fallbackName!
+        : 'Kang user';
+
+    return AppUser(
+      id: user.uid,
+      firebaseUid: user.uid,
+      email: email,
+      displayName: displayName?.isEmpty == true ? null : displayName,
+      photoUrl: user.photoURL,
+      userName: userName,
+      userType: 'firebase',
+      roleCode: 'USER',
+    );
   }
 }
 

@@ -4,12 +4,63 @@ import 'package:flutter/foundation.dart';
 class FirebaseSocialAuth {
   const FirebaseSocialAuth._();
 
+  static const calendarEventsScope =
+      'https://www.googleapis.com/auth/calendar.events';
+  static const calendarEventsReadonlyScope =
+      'https://www.googleapis.com/auth/calendar.events.readonly';
+
   static Future<UserCredential> signInWithGoogle() {
+    final provider = _googleProvider();
+
+    if (kIsWeb) {
+      return FirebaseAuth.instance.signInWithPopup(provider);
+    }
+    return FirebaseAuth.instance.signInWithProvider(provider);
+  }
+
+  static Future<String> requestGoogleCalendarAccessToken() async {
+    final provider = _googleProvider(
+      scopes: const [calendarEventsScope],
+      promptConsent: true,
+    );
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final credential = currentUser == null
+        ? await _signInWithProvider(provider)
+        : await currentUser.reauthenticateWithProvider(provider);
+    final accessToken = credential.credential?.accessToken;
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'missing-google-access-token',
+        message: 'Google Calendar access token was not returned.',
+      );
+    }
+
+    return accessToken;
+  }
+
+  static GoogleAuthProvider _googleProvider({
+    List<String> scopes = const [],
+    bool promptConsent = false,
+  }) {
     final provider = GoogleAuthProvider()
       ..addScope('email')
-      ..addScope('profile')
-      ..setCustomParameters({'prompt': 'select_account'});
+      ..addScope('profile');
 
+    for (final scope in scopes) {
+      provider.addScope(scope);
+    }
+
+    provider.setCustomParameters({
+      'prompt': promptConsent ? 'consent select_account' : 'select_account',
+    });
+
+    return provider;
+  }
+
+  static Future<UserCredential> _signInWithProvider(
+    GoogleAuthProvider provider,
+  ) {
     if (kIsWeb) {
       return FirebaseAuth.instance.signInWithPopup(provider);
     }

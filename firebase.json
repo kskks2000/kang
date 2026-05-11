@@ -1,0 +1,61 @@
+{
+  "functions": {
+    "source": "backend",
+    "runtime": "python311",
+    "ignore": [
+      ".env",
+      ".env.*",
+      ".venv",
+      "__pycache__",
+      "*.pyc"
+    ]
+  },
+  "hosting": {
+    "public": "frontend/build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|css|wasm)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public,max-age=31536000,immutable"
+          }
+        ]
+      },
+      {
+        "source": "/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/health",
+        "function": {
+          "functionId": "api",
+          "region": "asia-northeast3"
+        }
+      },
+      {
+        "source": "/auth/**",
+        "function": {
+          "functionId": "api",
+          "region": "asia-northeast3"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

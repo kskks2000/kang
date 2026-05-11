@@ -17,11 +17,12 @@ class AppConfig {
     }
 
     return switch (defaultTargetPlatform) {
-      TargetPlatform.android => 'http://10.0.2.2:8000',
-      TargetPlatform.iOS ||
-      TargetPlatform.macOS ||
-      TargetPlatform.linux ||
+      TargetPlatform.android =>
+        kReleaseMode ? 'https://kang-84cdd.web.app' : 'http://10.0.2.2:8000',
+      TargetPlatform.iOS || TargetPlatform.macOS =>
+        kReleaseMode ? 'https://kang-84cdd.web.app' : 'http://localhost:8000',
       TargetPlatform.windows ||
+      TargetPlatform.linux ||
       TargetPlatform.fuchsia => 'http://localhost:8000',
     };
   }

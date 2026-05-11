@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
+import '../services/google_calendar_service.dart';
 import '../theme/kang_theme.dart';
 import '../widgets/kang_mark.dart';
 
@@ -80,6 +81,7 @@ class HomeScreen extends StatelessWidget {
   List<_HomeModule> _homeModules() {
     return const [
       _HomeModule(
+        kind: _HomeModuleKind.calendar,
         title: '캘린더',
         subtitle: '일정과 알림',
         status: '연동 준비',
@@ -515,6 +517,10 @@ class _FeaturePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (module.kind == _HomeModuleKind.calendar) {
+      return _CalendarFeaturePanel(module: module);
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.86),
@@ -566,6 +572,266 @@ class _FeaturePanel extends StatelessWidget {
   }
 }
 
+class _CalendarFeaturePanel extends StatefulWidget {
+  const _CalendarFeaturePanel({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  State<_CalendarFeaturePanel> createState() => _CalendarFeaturePanelState();
+}
+
+class _CalendarFeaturePanelState extends State<_CalendarFeaturePanel> {
+  final GoogleCalendarService _calendarService = GoogleCalendarService();
+
+  bool _loading = false;
+  GoogleCalendarPreview? _preview;
+  String? _error;
+
+  Future<void> _connect() async {
+    if (_loading) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final preview = await _calendarService.loadUpcomingEvents();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _preview = preview);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _error = _calendarErrorMessage(error));
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final events = _preview?.events ?? const <GoogleCalendarEvent>[];
+    final connected = _preview != null && _error == null;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.calendar_month_outlined,
+                  color: widget.module.accent,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Google Calendar',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                _StatusPill(
+                  text: connected ? 'Connected' : 'Needs access',
+                  color: widget.module.accent,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Connect this account to Google Calendar and verify API access by loading upcoming events.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              icon: _loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.sync_rounded),
+              label: Text(
+                connected ? 'Refresh Calendar' : 'Connect Google Calendar',
+              ),
+              onPressed: _loading ? null : _connect,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 14),
+              _CalendarMessage(
+                icon: Icons.error_outline,
+                text: _error!,
+                color: const Color(0xFFBA1A1A),
+              ),
+            ],
+            if (connected) ...[
+              const SizedBox(height: 16),
+              _ReadinessRow(
+                icon: Icons.key_outlined,
+                label: 'OAuth scope',
+                value: 'calendar.events',
+                color: widget.module.accent,
+              ),
+              const SizedBox(height: 10),
+              _ReadinessRow(
+                icon: Icons.cloud_done_outlined,
+                label: 'Calendar API',
+                value: 'Ready',
+                color: widget.module.accent,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Upcoming events',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              if (events.isEmpty)
+                const _CalendarMessage(
+                  icon: Icons.event_available_outlined,
+                  text: 'No upcoming events found.',
+                  color: KangColors.slate,
+                )
+              else
+                for (final event in events) _CalendarEventTile(event: event),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _calendarErrorMessage(Object error) {
+    if (error is FirebaseAuthException) {
+      return switch (error.code) {
+        'popup-closed-by-user' ||
+        'web-context-cancelled' ||
+        'cancelled-popup-request' =>
+          'Google Calendar authorization was canceled.',
+        'missing-google-access-token' =>
+          'Google did not return a Calendar access token. Check OAuth client and scope settings.',
+        'calendar-scope-denied' =>
+          'Google Calendar permission was denied or expired. Please authorize again.',
+        'account-exists-with-different-credential' =>
+          'This Google account is already connected to another Firebase account.',
+        _ => error.message ?? 'Google Calendar authorization failed.',
+      };
+    }
+    return error.toString();
+  }
+}
+
+class _CalendarEventTile extends StatelessWidget {
+  const _CalendarEventTile({required this.event});
+
+  final GoogleCalendarEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: KangColors.mintSoft.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.event_note_outlined,
+            size: 20,
+            color: KangColors.royalPurple,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  event.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _formatEventTime(event.start),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatEventTime(DateTime? value) {
+    if (value == null) {
+      return 'Time not set';
+    }
+    final local = value.toLocal();
+    return '${local.year}-${_two(local.month)}-${_two(local.day)} '
+        '${_two(local.hour)}:${_two(local.minute)}';
+  }
+
+  static String _two(int value) => value.toString().padLeft(2, '0');
+}
+
+class _CalendarMessage extends StatelessWidget {
+  const _CalendarMessage({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: color, fontSize: 13),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ReadinessRow extends StatelessWidget {
   const _ReadinessRow({
     required this.icon,
@@ -613,6 +879,7 @@ class _ReadinessRow extends StatelessWidget {
 
 class _HomeModule {
   const _HomeModule({
+    this.kind = _HomeModuleKind.placeholder,
     required this.title,
     required this.subtitle,
     required this.status,
@@ -624,6 +891,7 @@ class _HomeModule {
     required this.screenIcon,
   });
 
+  final _HomeModuleKind kind;
   final String title;
   final String subtitle;
   final String status;
@@ -634,3 +902,5 @@ class _HomeModule {
   final String screenSubtitle;
   final IconData screenIcon;
 }
+
+enum _HomeModuleKind { calendar, placeholder }
