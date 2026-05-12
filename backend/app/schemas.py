@@ -55,3 +55,72 @@ class CalendarEvent(BaseModel):
 
 class CalendarEventsResponse(BaseModel):
     events: list[CalendarEvent]
+
+
+class DriveFilesRequest(BaseModel):
+    id_token: str = Field(min_length=20)
+    google_access_token: str = Field(min_length=20)
+    query: Optional[str] = Field(default=None, max_length=200)
+    page_size: int = Field(default=50, ge=1, le=100)
+
+
+class DriveSheetFile(BaseModel):
+    id: str
+    name: str
+    modified_time: Optional[str] = None
+    web_view_link: Optional[str] = None
+
+
+class DriveFilesResponse(BaseModel):
+    files: list[DriveSheetFile]
+
+
+class DriveImportRequest(BaseModel):
+    id_token: str = Field(min_length=20)
+    google_access_token: str = Field(min_length=20)
+    file_id: str = Field(min_length=5, max_length=300)
+    file_name: str = Field(min_length=1, max_length=500)
+    max_rows: int = Field(default=1000, ge=1, le=5000)
+
+
+class DriveImportResponse(BaseModel):
+    file_id: str
+    file_name: str
+    imported_rows: int
+    sheet_count: int
+
+
+class DriveRowsRequest(BaseModel):
+    id_token: str = Field(min_length=20)
+    search: Optional[str] = Field(default=None, max_length=200)
+    limit: int = Field(default=200, ge=1, le=1000)
+
+
+class GoogleDriveRow(BaseModel):
+    id: str
+    drivename: Optional[str] = None
+    tabname: Optional[str] = None
+    text01: Optional[str] = None
+    text02: Optional[str] = None
+    text03: Optional[str] = None
+    text04: Optional[str] = None
+    text05: Optional[str] = None
+    text06: Optional[str] = None
+    text07: Optional[str] = None
+    text08: Optional[str] = None
+    text09: Optional[str] = None
+    text10: Optional[str] = None
+    text11: Optional[str] = None
+    text12: Optional[str] = None
+    text13: Optional[str] = None
+    text14: Optional[str] = None
+    text15: Optional[str] = None
+    text16: Optional[str] = None
+    text17: Optional[str] = None
+    text18: Optional[str] = None
+    text19: Optional[str] = None
+    text20: Optional[str] = None
+
+
+class DriveRowsResponse(BaseModel):
+    rows: list[GoogleDriveRow]

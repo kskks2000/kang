@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../services/firebase_social_auth.dart';
 import '../services/google_calendar_service.dart';
+import '../services/google_drive_api.dart';
 import '../theme/kang_theme.dart';
 import '../widgets/kang_mark.dart';
 
@@ -119,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: '파일',
         subtitle: 'Drive 문서함',
         status: '연동 준비',
+        kind: _HomeModuleKind.drive,
         icon: Icons.folder_copy_outlined,
         accent: Color(0xFF2DB7A5),
         surface: Color(0xFFE9FBF6),
@@ -369,9 +371,7 @@ class _ModuleTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => _FeatureScreen(module: module)),
-        ),
+        onTap: () => _openModule(context),
         child: Ink(
           height: 124,
           padding: const EdgeInsets.all(14),
@@ -429,6 +429,24 @@ class _ModuleTile extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _openModule(BuildContext context) async {
+    if (module.kind == _HomeModuleKind.drive) {
+      try {
+        await FirebaseSocialAuth.requestGoogleDriveSheetsAccessToken();
+      } catch (_) {
+        // The Drive screen still shows a retry action and a clear error.
+      }
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => _FeatureScreen(module: module)));
+  }
 }
 
 class _CalendarModuleTile extends StatelessWidget {
@@ -449,11 +467,7 @@ class _CalendarModuleTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: () => Navigator.of(context)
-            .push(
-              MaterialPageRoute(builder: (_) => _FeatureScreen(module: module)),
-            )
-            .then((_) => onRefresh()),
+        onTap: () => _openCalendar(context),
         child: Ink(
           height: 184,
           padding: const EdgeInsets.all(14),
@@ -560,6 +574,23 @@ class _CalendarModuleTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openCalendar(BuildContext context) async {
+    try {
+      await FirebaseSocialAuth.requestGoogleCalendarAccessToken();
+    } catch (_) {
+      // The calendar screen still gives the user a clear retry action.
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => _FeatureScreen(module: module)));
+    onRefresh();
   }
 }
 
@@ -784,6 +815,9 @@ class _FeaturePanel extends StatelessWidget {
     if (module.kind == _HomeModuleKind.calendar) {
       return _CalendarFeaturePanel(module: module);
     }
+    if (module.kind == _HomeModuleKind.drive) {
+      return _DriveFeaturePanel(module: module);
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -829,6 +863,436 @@ class _FeaturePanel extends StatelessWidget {
               value: '대기 중',
               color: module.accent,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DriveFeaturePanel extends StatefulWidget {
+  const _DriveFeaturePanel({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  State<_DriveFeaturePanel> createState() => _DriveFeaturePanelState();
+}
+
+class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
+  final GoogleDriveApi _driveApi = GoogleDriveApi();
+  final TextEditingController _searchController = TextEditingController();
+
+  bool _loadingFiles = false;
+  bool _loadingRows = false;
+  String? _importingFileId;
+  String? _error;
+  String? _message;
+  List<GoogleDriveSheetFile> _files = const [];
+  List<GoogleDriveTableRowData> _rows = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadFiles();
+      _loadRows();
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFiles() async {
+    if (_loadingFiles) {
+      return;
+    }
+    setState(() {
+      _loadingFiles = true;
+      _error = null;
+      _message = null;
+    });
+
+    try {
+      final files = await _driveApi.listSheetFiles(
+        query: _searchController.text,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _files = files;
+        _message = files.isEmpty
+            ? 'Google Drive에서 Google Sheet 파일을 찾지 못했습니다.'
+            : 'Google Sheet ${files.length}개를 불러왔습니다.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _error = _driveErrorMessage(error));
+    } finally {
+      if (mounted) {
+        setState(() => _loadingFiles = false);
+      }
+    }
+  }
+
+  Future<void> _importFile(GoogleDriveSheetFile file) async {
+    if (_importingFileId != null) {
+      return;
+    }
+    setState(() {
+      _importingFileId = file.id;
+      _error = null;
+      _message = null;
+    });
+
+    try {
+      final result = await _driveApi.importSheet(file);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message =
+            '${result.fileName}에서 ${result.sheetCount}개 탭, ${result.importedRows}개 행을 가져왔습니다.';
+      });
+      await _loadRows();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _error = _driveErrorMessage(error));
+    } finally {
+      if (mounted) {
+        setState(() => _importingFileId = null);
+      }
+    }
+  }
+
+  Future<void> _loadRows() async {
+    if (_loadingRows) {
+      return;
+    }
+    setState(() {
+      _loadingRows = true;
+      _error = null;
+    });
+
+    try {
+      final rows = await _driveApi.listRows(search: _searchController.text);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _rows = rows);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _error = _driveErrorMessage(error));
+    } finally {
+      if (mounted) {
+        setState(() => _loadingRows = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredRows = _rows
+        .where((row) => row.matches(_searchController.text))
+        .toList(growable: false);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.folder_copy_outlined, color: widget.module.accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Google Drive / Sheets',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                _StatusPill(text: 'DB 저장', color: widget.module.accent),
+              ],
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _searchController,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _loadRows(),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.manage_search_rounded),
+                suffixIcon: IconButton(
+                  tooltip: '검색',
+                  icon: const Icon(Icons.search_rounded),
+                  onPressed: _loadRows,
+                ),
+                labelText: '파워 검색',
+                hintText: '파일명, 탭명, text01~text20 전체 검색',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilledButton.icon(
+                  icon: _loadingFiles
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.cloud_sync_outlined),
+                  label: const Text('드라이브 불러오기'),
+                  onPressed: _loadingFiles ? null : _loadFiles,
+                ),
+                OutlinedButton.icon(
+                  icon: _loadingRows
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.table_view_outlined),
+                  label: const Text('보기'),
+                  onPressed: _loadingRows ? null : _loadRows,
+                ),
+              ],
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              _CalendarMessage(
+                icon: Icons.error_outline,
+                text: _error!,
+                color: const Color(0xFFBA1A1A),
+              ),
+            ],
+            if (_message != null) ...[
+              const SizedBox(height: 12),
+              _CalendarMessage(
+                icon: Icons.check_circle_outline_rounded,
+                text: _message!,
+                color: widget.module.accent,
+              ),
+            ],
+            if (_files.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Google Sheet 파일',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              for (final file in _files)
+                _DriveFileTile(
+                  file: file,
+                  color: widget.module.accent,
+                  importing: _importingFileId == file.id,
+                  disabled: _importingFileId != null,
+                  onImport: () => _importFile(file),
+                ),
+            ],
+            const SizedBox(height: 16),
+            _DriveRowsHeader(
+              count: filteredRows.length,
+              loading: _loadingRows,
+              color: widget.module.accent,
+            ),
+            const SizedBox(height: 8),
+            if (filteredRows.isEmpty)
+              const _CalendarMessage(
+                icon: Icons.table_rows_outlined,
+                text: '저장된 Google Drive 데이터가 없습니다.',
+                color: KangColors.slate,
+              )
+            else
+              _DriveRowsTable(rows: filteredRows),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _driveErrorMessage(Object error) {
+    final message = error.toString();
+    return message
+        .replaceFirst('ApiException: ', '')
+        .replaceFirst('FirebaseAuthException: ', '')
+        .replaceFirst('Exception: ', '');
+  }
+}
+
+class _DriveFileTile extends StatelessWidget {
+  const _DriveFileTile({
+    required this.file,
+    required this.color,
+    required this.importing,
+    required this.disabled,
+    required this.onImport,
+  });
+
+  final GoogleDriveSheetFile file;
+  final Color color;
+  final bool importing;
+  final bool disabled;
+  final VoidCallback onImport;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.description_outlined, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  file.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: KangColors.ink,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (file.modifiedTime != null)
+                  Text(
+                    '수정: ${file.modifiedTime}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.icon(
+            icon: importing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.download_rounded),
+            label: const Text('가져오기'),
+            onPressed: disabled ? null : onImport,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriveRowsHeader extends StatelessWidget {
+  const _DriveRowsHeader({
+    required this.count,
+    required this.loading,
+    required this.color,
+  });
+
+  final int count;
+  final bool loading;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.storage_outlined, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'google_drives 저장 데이터',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+          ),
+        ),
+        _StatusPill(text: loading ? '조회 중' : '$count개', color: color),
+      ],
+    );
+  }
+}
+
+class _DriveRowsTable extends StatelessWidget {
+  const _DriveRowsTable({required this.rows});
+
+  final List<GoogleDriveTableRowData> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scrollbar(
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStatePropertyAll(
+            KangColors.royalPurple.withValues(alpha: 0.08),
+          ),
+          columns: [
+            const DataColumn(label: Text('drivename')),
+            const DataColumn(label: Text('tabname')),
+            for (var index = 1; index <= 20; index++)
+              DataColumn(
+                label: Text('text${index.toString().padLeft(2, '0')}'),
+              ),
+          ],
+          rows: [
+            for (final row in rows)
+              DataRow(
+                cells: [
+                  DataCell(Text(row.driveName ?? '')),
+                  DataCell(Text(row.tabName ?? '')),
+                  for (final value in row.values)
+                    DataCell(
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 180),
+                        child: Text(
+                          value ?? '',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
           ],
         ),
       ),
@@ -1051,42 +1515,198 @@ class _CalendarDateNavigator extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < 520;
-        final dateButton = OutlinedButton.icon(
-          icon: const Icon(Icons.calendar_today_outlined),
-          label: Text(
-            _CalendarDateText.full(date),
-            overflow: TextOverflow.ellipsis,
+        final compact = constraints.maxWidth < 620;
+        final dateSelector = _CalendarDateSelectButton(
+          date: date,
+          loading: loading,
+          onPressed: onPickDate,
+        );
+        final previousButton = _CalendarMoveButton(
+          icon: Icons.chevron_left_rounded,
+          label: '전날',
+          loading: loading,
+          onPressed: onPrevious,
+        );
+        final nextButton = _CalendarMoveButton(
+          icon: Icons.chevron_right_rounded,
+          label: '다음날',
+          loading: loading,
+          onPressed: onNext,
+          iconAfterLabel: true,
+        );
+        final todayButton = OutlinedButton.icon(
+          icon: const Icon(Icons.today_outlined),
+          label: const Text('오늘'),
+          onPressed: loading ? null : onToday,
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(88, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
-          onPressed: loading ? null : onPickDate,
         );
 
-        final controls = [
-          IconButton.outlined(
-            tooltip: '전날',
-            icon: const Icon(Icons.chevron_left_rounded),
-            onPressed: loading ? null : onPrevious,
-          ),
-          if (compact) Expanded(child: dateButton) else dateButton,
-          IconButton.outlined(
-            tooltip: '다음날',
-            icon: const Icon(Icons.chevron_right_rounded),
-            onPressed: loading ? null : onNext,
-          ),
-          TextButton(
-            onPressed: loading ? null : onToday,
-            child: const Text('오늘'),
-          ),
-        ];
-
         if (compact) {
-          return Row(children: controls);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              dateSelector,
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: previousButton),
+                  const SizedBox(width: 8),
+                  todayButton,
+                  const SizedBox(width: 8),
+                  Expanded(child: nextButton),
+                ],
+              ),
+            ],
+          );
         }
 
         return Row(
-          children: [...controls.take(3), const Spacer(), controls.last],
+          children: [
+            previousButton,
+            const SizedBox(width: 10),
+            Expanded(child: dateSelector),
+            const SizedBox(width: 10),
+            nextButton,
+            const SizedBox(width: 10),
+            todayButton,
+          ],
         );
       },
+    );
+  }
+}
+
+class _CalendarDateSelectButton extends StatelessWidget {
+  const _CalendarDateSelectButton({
+    required this.date,
+    required this.loading,
+    required this.onPressed,
+  });
+
+  final DateTime date;
+  final bool loading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = !loading;
+
+    return Material(
+      color: enabled
+          ? KangColors.royalPurple.withValues(alpha: 0.08)
+          : KangColors.line.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: enabled ? onPressed : null,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 64),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: KangColors.royalPurple.withValues(alpha: 0.18),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.calendar_month_outlined,
+                  color: KangColors.royalPurple,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      '선택 날짜',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: KangColors.slate,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _CalendarDateText.full(date),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.expand_more_rounded,
+                color: KangColors.royalPurple,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarMoveButton extends StatelessWidget {
+  const _CalendarMoveButton({
+    required this.icon,
+    required this.label,
+    required this.loading,
+    required this.onPressed,
+    this.iconAfterLabel = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool loading;
+  final VoidCallback onPressed;
+  final bool iconAfterLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final children = [
+      Icon(icon, size: 22),
+      const SizedBox(width: 4),
+      Flexible(
+        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+    ];
+
+    return OutlinedButton(
+      onPressed: loading ? null : onPressed,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(94, 64),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: iconAfterLabel ? children.reversed.toList() : children,
+      ),
     );
   }
 }
@@ -1205,6 +1825,27 @@ class _CalendarEventTile extends StatelessWidget {
                     Expanded(
                       child: Text(
                         _formatEventRange(event),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: KangColors.slate,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_outlined,
+                      size: 15,
+                      color: KangColors.slate,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        event.calendarTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1400,4 +2041,4 @@ class _HomeModule {
   final IconData screenIcon;
 }
 
-enum _HomeModuleKind { calendar, placeholder }
+enum _HomeModuleKind { calendar, drive, placeholder }

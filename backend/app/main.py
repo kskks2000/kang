@@ -6,10 +6,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from .auth_service import create_or_update_session, find_login_id
 from .calendar_service import load_calendar_events
 from .db import get_db
+from .drive_service import (
+    import_google_sheet,
+    list_google_drive_rows,
+    list_google_sheet_files,
+    user_id_from_claims,
+)
 from .firebase_auth import verify_firebase_id_token
 from .schemas import (
     CalendarEventsRequest,
     CalendarEventsResponse,
+    DriveFilesRequest,
+    DriveFilesResponse,
+    DriveImportRequest,
+    DriveImportResponse,
+    DriveRowsRequest,
+    DriveRowsResponse,
     FindLoginIdRequest,
     FindLoginIdResponse,
     SessionRequest,
@@ -69,3 +81,43 @@ def calendar_events(payload: CalendarEventsRequest) -> dict:
         max_results=payload.max_results,
     )
     return {"events": events}
+
+
+@app.post("/drive/files", response_model=DriveFilesResponse)
+def drive_files(payload: DriveFilesRequest) -> dict:
+    verify_firebase_id_token(payload.id_token)
+    files = list_google_sheet_files(
+        access_token=payload.google_access_token,
+        query=payload.query,
+        page_size=payload.page_size,
+    )
+    return {"files": files}
+
+
+@app.post("/drive/import", response_model=DriveImportResponse)
+def drive_import(payload: DriveImportRequest) -> dict:
+    claims = verify_firebase_id_token(payload.id_token)
+    with get_db() as conn:
+        user_id = user_id_from_claims(conn, claims)
+        return import_google_sheet(
+            conn,
+            user_id=user_id,
+            access_token=payload.google_access_token,
+            file_id=payload.file_id,
+            file_name=payload.file_name,
+            max_rows=payload.max_rows,
+        )
+
+
+@app.post("/drive/rows", response_model=DriveRowsResponse)
+def drive_rows(payload: DriveRowsRequest) -> dict:
+    claims = verify_firebase_id_token(payload.id_token)
+    with get_db() as conn:
+        user_id = user_id_from_claims(conn, claims)
+        rows = list_google_drive_rows(
+            conn,
+            user_id=user_id,
+            search=payload.search,
+            limit=payload.limit,
+        )
+    return {"rows": rows}

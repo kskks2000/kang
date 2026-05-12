@@ -5,23 +5,29 @@ class FirebaseSocialAuth {
   const FirebaseSocialAuth._();
 
   static const calendarEventsScope =
-      'https://www.googleapis.com/auth/calendar.events';
+      'https://www.googleapis.com/auth/calendar.events.readonly';
   static const calendarEventsReadonlyScope =
       'https://www.googleapis.com/auth/calendar.events.readonly';
+  static const calendarListReadonlyScope =
+      'https://www.googleapis.com/auth/calendar.calendarlist.readonly';
+  static const driveMetadataReadonlyScope =
+      'https://www.googleapis.com/auth/drive.metadata.readonly';
+  static const sheetsReadonlyScope =
+      'https://www.googleapis.com/auth/spreadsheets.readonly';
   static String? _calendarAccessToken;
+  static String? _driveSheetsAccessToken;
 
   static String? get cachedCalendarAccessToken => _calendarAccessToken;
 
   static void clearCachedGoogleCalendarAccessToken() {
     _calendarAccessToken = null;
+    _driveSheetsAccessToken = null;
   }
 
   static Future<UserCredential> signInWithGoogle() async {
-    final provider = _googleProvider(scopes: const [calendarEventsScope]);
+    final provider = _googleProvider();
 
-    final credential = await _signInWithProvider(provider);
-    _rememberGoogleAccessToken(credential);
-    return credential;
+    return _signInWithProvider(provider);
   }
 
   static Future<String> requestGoogleCalendarAccessToken({
@@ -33,13 +39,13 @@ class FirebaseSocialAuth {
     }
 
     final provider = _googleProvider(
-      scopes: const [calendarEventsScope],
+      scopes: const [calendarEventsScope, calendarListReadonlyScope],
       promptConsent: forceConsent,
     );
     final currentUser = FirebaseAuth.instance.currentUser;
     final credential = currentUser == null
         ? await _signInWithProvider(provider)
-        : await currentUser.reauthenticateWithProvider(provider);
+        : await _reauthenticateWithProvider(currentUser, provider);
     final accessToken = credential.credential?.accessToken;
 
     if (accessToken == null || accessToken.isEmpty) {
@@ -50,6 +56,35 @@ class FirebaseSocialAuth {
     }
 
     _calendarAccessToken = accessToken;
+    return accessToken;
+  }
+
+  static Future<String> requestGoogleDriveSheetsAccessToken({
+    bool forceConsent = true,
+  }) async {
+    final cachedToken = _driveSheetsAccessToken;
+    if (cachedToken != null && cachedToken.isNotEmpty) {
+      return cachedToken;
+    }
+
+    final provider = _googleProvider(
+      scopes: const [driveMetadataReadonlyScope, sheetsReadonlyScope],
+      promptConsent: forceConsent,
+    );
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final credential = currentUser == null
+        ? await _signInWithProvider(provider)
+        : await _reauthenticateWithProvider(currentUser, provider);
+    final accessToken = credential.credential?.accessToken;
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'missing-google-access-token',
+        message: 'Google Drive and Sheets access token was not returned.',
+      );
+    }
+
+    _driveSheetsAccessToken = accessToken;
     return accessToken;
   }
 
@@ -82,11 +117,14 @@ class FirebaseSocialAuth {
     return FirebaseAuth.instance.signInWithProvider(provider);
   }
 
-  static void _rememberGoogleAccessToken(UserCredential credential) {
-    final accessToken = credential.credential?.accessToken;
-    if (accessToken != null && accessToken.isNotEmpty) {
-      _calendarAccessToken = accessToken;
+  static Future<UserCredential> _reauthenticateWithProvider(
+    User currentUser,
+    GoogleAuthProvider provider,
+  ) {
+    if (kIsWeb) {
+      return currentUser.reauthenticateWithPopup(provider);
     }
+    return currentUser.reauthenticateWithProvider(provider);
   }
 
   static String googleErrorMessage(FirebaseAuthException error) {
