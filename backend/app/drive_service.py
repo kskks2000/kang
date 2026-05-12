@@ -78,16 +78,26 @@ def list_google_sheet_files(
     if not isinstance(files, list):
         return []
 
-    return [
-        {
-            "id": str(item.get("id") or ""),
-            "name": str(item.get("name") or "Untitled sheet"),
-            "modified_time": item.get("modifiedTime"),
-            "web_view_link": item.get("webViewLink"),
-        }
-        for item in files
-        if isinstance(item, dict) and item.get("id")
-    ]
+    sheet_files: list[dict[str, Any]] = []
+    for item in files:
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+
+        file_id = str(item.get("id") or "")
+        sheet_files.append(
+            {
+                "id": file_id,
+                "name": str(item.get("name") or "Untitled sheet"),
+                "sheet_names": _safe_load_sheet_titles(
+                    access_token=access_token,
+                    file_id=file_id,
+                ),
+                "modified_time": item.get("modifiedTime"),
+                "web_view_link": item.get("webViewLink"),
+            }
+        )
+
+    return sheet_files
 
 
 def import_google_sheet(
@@ -97,16 +107,35 @@ def import_google_sheet(
     access_token: str,
     file_id: str,
     file_name: str,
+    sheet_name: str | None,
     max_rows: int,
 ) -> dict[str, Any]:
     sheets = _load_sheet_titles(access_token=access_token, file_id=file_id)
     if not sheets:
-        return {"file_id": file_id, "file_name": file_name, "imported_rows": 0, "sheet_count": 0}
+        return {
+            "file_id": file_id,
+            "file_name": file_name,
+            "sheet_name": sheet_name,
+            "imported_rows": 0,
+            "sheet_count": 0,
+        }
+
+    selected_sheet = sheet_name.strip() if sheet_name else None
+    if selected_sheet:
+        matching_sheet = next((sheet for sheet in sheets if sheet == selected_sheet), None)
+        if matching_sheet is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="선택한 Google Sheet 탭을 찾지 못했습니다.",
+            )
+        sheets_to_import = [matching_sheet]
+    else:
+        sheets_to_import = sheets
 
     values_by_sheet = _load_sheet_values(
         access_token=access_token,
         file_id=file_id,
-        sheets=sheets,
+        sheets=sheets_to_import,
         max_rows=max_rows,
     )
     rows: list[tuple[Any, ...]] = []
@@ -119,14 +148,25 @@ def import_google_sheet(
             rows.append((user_id, file_name, sheet_name, *normalized))
 
     with conn.cursor() as cur:
-        cur.execute(
-            """
-            DELETE FROM kang.google_drives
-            WHERE user_id = %s
-              AND drivename = %s
-            """,
-            (user_id, file_name),
-        )
+        if selected_sheet:
+            cur.execute(
+                """
+                DELETE FROM kang.google_drives
+                WHERE user_id = %s
+                  AND drivename = %s
+                  AND tabname = %s
+                """,
+                (user_id, file_name, selected_sheet),
+            )
+        else:
+            cur.execute(
+                """
+                DELETE FROM kang.google_drives
+                WHERE user_id = %s
+                  AND drivename = %s
+                """,
+                (user_id, file_name),
+            )
         if rows:
             columns = ["user_id", "drivename", "tabname", *TEXT_COLUMNS]
             placeholders = ", ".join(["%s"] * len(columns))
@@ -141,8 +181,9 @@ def import_google_sheet(
     return {
         "file_id": file_id,
         "file_name": file_name,
+        "sheet_name": selected_sheet,
         "imported_rows": len(rows),
-        "sheet_count": len(sheets),
+        "sheet_count": len(sheets_to_import),
     }
 
 
@@ -207,6 +248,13 @@ def _load_sheet_titles(*, access_token: str, file_id: str) -> list[str]:
         if title:
             titles.append(title)
     return titles
+
+
+def _safe_load_sheet_titles(*, access_token: str, file_id: str) -> list[str]:
+    try:
+        return _load_sheet_titles(access_token=access_token, file_id=file_id)
+    except HTTPException:
+        return []
 
 
 def _load_sheet_values(

@@ -67,6 +67,7 @@ class DriveFilesRequest(BaseModel):
 class DriveSheetFile(BaseModel):
     id: str
     name: str
+    sheet_names: list[str] = Field(default_factory=list)
     modified_time: Optional[str] = None
     web_view_link: Optional[str] = None
 
@@ -80,12 +81,14 @@ class DriveImportRequest(BaseModel):
     google_access_token: str = Field(min_length=20)
     file_id: str = Field(min_length=5, max_length=300)
     file_name: str = Field(min_length=1, max_length=500)
+    sheet_name: Optional[str] = Field(default=None, min_length=1, max_length=500)
     max_rows: int = Field(default=1000, ge=1, le=5000)
 
 
 class DriveImportResponse(BaseModel):
     file_id: str
     file_name: str
+    sheet_name: Optional[str] = None
     imported_rows: int
     sheet_count: int
 

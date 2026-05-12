@@ -105,6 +105,7 @@ def drive_import(payload: DriveImportRequest) -> dict:
             access_token=payload.google_access_token,
             file_id=payload.file_id,
             file_name=payload.file_name,
+            sheet_name=payload.sheet_name,
             max_rows=payload.max_rows,
         )
 

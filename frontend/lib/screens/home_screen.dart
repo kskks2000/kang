@@ -885,7 +885,8 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
 
   bool _loadingFiles = false;
   bool _loadingRows = false;
-  String? _importingFileId;
+  String? _selectedFileId;
+  String? _importingSheetKey;
   String? _error;
   String? _message;
   List<GoogleDriveSheetFile> _files = const [];
@@ -941,24 +942,25 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
     }
   }
 
-  Future<void> _importFile(GoogleDriveSheetFile file) async {
-    if (_importingFileId != null) {
+  Future<void> _importSheet(GoogleDriveSheetFile file, String sheetName) async {
+    if (_importingSheetKey != null) {
       return;
     }
+    final sheetKey = _sheetKey(file, sheetName);
     setState(() {
-      _importingFileId = file.id;
+      _importingSheetKey = sheetKey;
       _error = null;
       _message = null;
     });
 
     try {
-      final result = await _driveApi.importSheet(file);
+      final result = await _driveApi.importSheet(file, sheetName: sheetName);
       if (!mounted) {
         return;
       }
       setState(() {
         _message =
-            '${result.fileName}에서 ${result.sheetCount}개 탭, ${result.importedRows}개 행을 가져왔습니다.';
+            '${result.fileName} / ${result.sheetName ?? sheetName}에서 ${result.importedRows}개 행을 가져왔습니다.';
       });
       await _loadRows();
     } catch (error) {
@@ -968,9 +970,13 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
       setState(() => _error = _driveErrorMessage(error));
     } finally {
       if (mounted) {
-        setState(() => _importingFileId = null);
+        setState(() => _importingSheetKey = null);
       }
     }
+  }
+
+  String _sheetKey(GoogleDriveSheetFile file, String sheetName) {
+    return '${file.id}::$sheetName';
   }
 
   Future<void> _loadRows() async {
@@ -998,6 +1004,67 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
         setState(() => _loadingRows = false);
       }
     }
+  }
+
+  Future<void> _openRowsViewer() async {
+    if (_loadingRows) {
+      return;
+    }
+
+    List<GoogleDriveTableRowData> rows = const [];
+    var loaded = false;
+    setState(() {
+      _loadingRows = true;
+      _error = null;
+    });
+
+    try {
+      rows = await _driveApi.listRows(search: _searchController.text);
+      loaded = true;
+      if (!mounted) {
+        return;
+      }
+      setState(() => _rows = rows);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _error = _driveErrorMessage(error));
+    } finally {
+      if (mounted) {
+        setState(() => _loadingRows = false);
+      }
+    }
+
+    if (!mounted || !loaded) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final viewport = MediaQuery.sizeOf(dialogContext);
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 22,
+            vertical: 22,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 1160,
+              maxHeight: viewport.height - 44,
+            ),
+            child: _DriveRowsViewer(
+              rows: rows,
+              color: widget.module.accent,
+              initialSearch: _searchController.text,
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -1077,7 +1144,7 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
                         )
                       : const Icon(Icons.table_view_outlined),
                   label: const Text('보기'),
-                  onPressed: _loadingRows ? null : _loadRows,
+                  onPressed: _loadingRows ? null : _openRowsViewer,
                 ),
               ],
             ),
@@ -1107,12 +1174,32 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
               ),
               const SizedBox(height: 8),
               for (final file in _files)
-                _DriveFileTile(
-                  file: file,
-                  color: widget.module.accent,
-                  importing: _importingFileId == file.id,
-                  disabled: _importingFileId != null,
-                  onImport: () => _importFile(file),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _DriveFileTile(
+                      file: file,
+                      color: widget.module.accent,
+                      selected: _selectedFileId == file.id,
+                      disabled: _importingSheetKey != null,
+                      onTap: () {
+                        setState(() {
+                          _selectedFileId = _selectedFileId == file.id
+                              ? null
+                              : file.id;
+                        });
+                      },
+                    ),
+                    if (_selectedFileId == file.id)
+                      _DriveSheetList(
+                        file: file,
+                        color: widget.module.accent,
+                        importingSheetKey: _importingSheetKey,
+                        disabled: _importingSheetKey != null,
+                        sheetKeyFor: (sheetName) => _sheetKey(file, sheetName),
+                        onImport: (sheetName) => _importSheet(file, sheetName),
+                      ),
+                  ],
                 ),
             ],
             const SizedBox(height: 16),
@@ -1129,7 +1216,7 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
                 color: KangColors.slate,
               )
             else
-              _DriveRowsTable(rows: filteredRows),
+              _DriveRowsTable(rows: filteredRows, color: widget.module.accent),
           ],
         ),
       ),
@@ -1149,12 +1236,184 @@ class _DriveFileTile extends StatelessWidget {
   const _DriveFileTile({
     required this.file,
     required this.color,
+    required this.selected,
+    required this.disabled,
+    required this.onTap,
+  });
+
+  final GoogleDriveSheetFile file;
+  final Color color;
+  final bool selected;
+  final bool disabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.only(bottom: selected ? 6 : 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: selected ? color.withValues(alpha: 0.5) : KangColors.line,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: disabled ? null : onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.description_outlined, color: color),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        file.displayName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: KangColors.ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _DriveNameLine(label: 'Drive명', value: file.displayName),
+                      _DriveNameLine(
+                        label: 'Sheet 탭',
+                        value: file.sheetNames.isEmpty
+                            ? '0개'
+                            : '${file.sheetNames.length}개',
+                      ),
+                      if (file.modifiedTime != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Text(
+                            '수정: ${file.modifiedTime}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: KangColors.slate),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  selected
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: KangColors.slate,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DriveSheetList extends StatelessWidget {
+  const _DriveSheetList({
+    required this.file,
+    required this.color,
+    required this.importingSheetKey,
+    required this.disabled,
+    required this.sheetKeyFor,
+    required this.onImport,
+  });
+
+  final GoogleDriveSheetFile file;
+  final Color color;
+  final String? importingSheetKey;
+  final bool disabled;
+  final String Function(String sheetName) sheetKeyFor;
+  final ValueChanged<String> onImport;
+
+  @override
+  Widget build(BuildContext context) {
+    if (file.sheetNames.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(left: 50, right: 4, bottom: 12),
+        child: _CalendarMessage(
+          icon: Icons.table_chart_outlined,
+          text: '이 파일에서 Sheet 탭 정보를 찾지 못했습니다.',
+          color: KangColors.slate,
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(left: 50, right: 4, bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.table_chart_outlined, size: 18, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${file.displayName} Sheets',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
+              _StatusPill(text: '${file.sheetNames.length}개', color: color),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final sheetName in file.sheetNames)
+            _DriveSheetTile(
+              sheetName: sheetName,
+              color: color,
+              importing: importingSheetKey == sheetKeyFor(sheetName),
+              disabled: disabled && importingSheetKey != sheetKeyFor(sheetName),
+              onImport: () => onImport(sheetName),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriveSheetTile extends StatelessWidget {
+  const _DriveSheetTile({
+    required this.sheetName,
+    required this.color,
     required this.importing,
     required this.disabled,
     required this.onImport,
   });
 
-  final GoogleDriveSheetFile file;
+  final String sheetName;
   final Color color;
   final bool importing;
   final bool disabled;
@@ -1164,43 +1423,42 @@ class _DriveFileTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: KangColors.line),
       ),
       child: Row(
         children: [
-          Icon(Icons.description_outlined, color: color),
-          const SizedBox(width: 10),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.grid_on_rounded, size: 18, color: color),
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  file.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: KangColors.ink,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                if (file.modifiedTime != null)
-                  Text(
-                    '수정: ${file.modifiedTime}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
-                  ),
-              ],
+            child: Text(
+              sheetName,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: KangColors.ink,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
           const SizedBox(width: 10),
           FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(112, 42),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+            ),
             icon: importing
                 ? const SizedBox(
                     width: 16,
@@ -1212,7 +1470,7 @@ class _DriveFileTile extends StatelessWidget {
                   )
                 : const Icon(Icons.download_rounded),
             label: const Text('가져오기'),
-            onPressed: disabled ? null : onImport,
+            onPressed: importing || disabled ? null : onImport,
           ),
         ],
       ),
@@ -1252,52 +1510,816 @@ class _DriveRowsHeader extends StatelessWidget {
 }
 
 class _DriveRowsTable extends StatelessWidget {
-  const _DriveRowsTable({required this.rows});
+  const _DriveRowsTable({required this.rows, required this.color});
 
   final List<GoogleDriveTableRowData> rows;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Scrollbar(
-      thumbVisibility: true,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: WidgetStatePropertyAll(
-            KangColors.royalPurple.withValues(alpha: 0.08),
+    return _DriveRowsGridTable(rows: rows, color: color);
+  }
+}
+
+class _DriveRowsViewer extends StatefulWidget {
+  const _DriveRowsViewer({
+    required this.rows,
+    required this.color,
+    required this.initialSearch,
+  });
+
+  final List<GoogleDriveTableRowData> rows;
+  final Color color;
+  final String initialSearch;
+
+  @override
+  State<_DriveRowsViewer> createState() => _DriveRowsViewerState();
+}
+
+class _DriveRowsViewerState extends State<_DriveRowsViewer> {
+  late final TextEditingController _controller;
+  String _activeGroupKey = 'all';
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialSearch);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final searchedRows = widget.rows
+        .where((row) => row.matches(_controller.text))
+        .toList(growable: false);
+    final groups = _DriveRowsGroup.fromRows(searchedRows);
+    final activeGroupKey =
+        _activeGroupKey == 'all' ||
+            groups.any((group) => group.key == _activeGroupKey)
+        ? _activeGroupKey
+        : 'all';
+    final visibleRows = activeGroupKey == 'all'
+        ? searchedRows
+        : searchedRows
+              .where((row) => _driveRowGroupKey(row) == activeGroupKey)
+              .toList(growable: false);
+
+    final driveCount = {
+      for (final row in widget.rows) _driveRowName(row),
+    }.where((value) => value != '-').length;
+    final sheetCount = {
+      for (final row in widget.rows) _driveRowGroupKey(row),
+    }.where((value) => value.trim().isNotEmpty).length;
+
+    return Container(
+      color: const Color(0xFFFBFAFF),
+      child: Column(
+        children: [
+          _DriveRowsViewerHeader(
+            color: widget.color,
+            rowCount: widget.rows.length,
           ),
-          columns: [
-            const DataColumn(label: Text('drivename')),
-            const DataColumn(label: Text('tabname')),
-            for (var index = 1; index <= 20; index++)
-              DataColumn(
-                label: Text('text${index.toString().padLeft(2, '0')}'),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 860;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _DriveRowsViewerSearch(
+                        controller: _controller,
+                        color: widget.color,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          _DriveViewerStat(
+                            icon: Icons.table_rows_outlined,
+                            label: '저장 행',
+                            value: '${widget.rows.length}개',
+                            color: widget.color,
+                          ),
+                          _DriveViewerStat(
+                            icon: Icons.folder_copy_outlined,
+                            label: 'Drive',
+                            value: '$driveCount개',
+                            color: const Color(0xFF2F6FED),
+                          ),
+                          _DriveViewerStat(
+                            icon: Icons.grid_on_rounded,
+                            label: 'Sheets',
+                            value: '$sheetCount개',
+                            color: KangColors.mintDeep,
+                          ),
+                          _DriveViewerStat(
+                            icon: Icons.filter_alt_outlined,
+                            label: '현재 보기',
+                            value: '${visibleRows.length}개',
+                            color: KangColors.royalPurple,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Expanded(
+                        child: wide
+                            ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SizedBox(
+                                    width: 292,
+                                    child: _DriveGroupRail(
+                                      groups: groups,
+                                      totalCount: searchedRows.length,
+                                      activeKey: activeGroupKey,
+                                      color: widget.color,
+                                      onSelect: (key) {
+                                        setState(() => _activeGroupKey = key);
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: _DriveRowsResultList(
+                                      rows: visibleRows,
+                                      color: widget.color,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _DriveGroupDropdown(
+                                    groups: groups,
+                                    totalCount: searchedRows.length,
+                                    activeKey: activeGroupKey,
+                                    onChanged: (key) {
+                                      if (key == null) {
+                                        return;
+                                      }
+                                      setState(() => _activeGroupKey = key);
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Expanded(
+                                    child: _DriveRowsResultList(
+                                      rows: visibleRows,
+                                      color: widget.color,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ],
+                  );
+                },
               ),
-          ],
-          rows: [
-            for (final row in rows)
-              DataRow(
-                cells: [
-                  DataCell(Text(row.driveName ?? '')),
-                  DataCell(Text(row.tabName ?? '')),
-                  for (final value in row.values)
-                    DataCell(
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 180),
-                        child: Text(
-                          value ?? '',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriveRowsViewerHeader extends StatelessWidget {
+  const _DriveRowsViewerHeader({required this.color, required this.rowCount});
+
+  final Color color;
+  final int rowCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 12, 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: KangColors.line)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.dataset_outlined, color: color),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '저장 데이터 보기',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'kang.google_drives에 저장된 Google Drive / Sheets 데이터',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                ),
+              ],
+            ),
+          ),
+          _StatusPill(text: '$rowCount개 행', color: color),
+          const SizedBox(width: 6),
+          IconButton(
+            tooltip: '닫기',
+            icon: const Icon(Icons.close_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriveRowsViewerSearch extends StatelessWidget {
+  const _DriveRowsViewerSearch({
+    required this.controller,
+    required this.color,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final Color color;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        prefixIcon: Icon(Icons.manage_search_rounded, color: color),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: '검색어 지우기',
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                },
+              ),
+        labelText: '저장 데이터 검색',
+        hintText: 'Drive명, Sheets명, text01~text20 전체 검색',
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+}
+
+class _DriveViewerStat extends StatelessWidget {
+  const _DriveViewerStat({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 156),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.09),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: KangColors.slate,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: KangColors.ink,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriveRowsGroup {
+  const _DriveRowsGroup({
+    required this.key,
+    required this.driveName,
+    required this.sheetName,
+    required this.count,
+  });
+
+  final String key;
+  final String driveName;
+  final String sheetName;
+  final int count;
+
+  static List<_DriveRowsGroup> fromRows(List<GoogleDriveTableRowData> rows) {
+    final counts = <String, int>{};
+    final names = <String, ({String driveName, String sheetName})>{};
+    for (final row in rows) {
+      final key = _driveRowGroupKey(row);
+      counts[key] = (counts[key] ?? 0) + 1;
+      names[key] = (
+        driveName: _driveRowName(row),
+        sheetName: _driveSheetName(row),
+      );
+    }
+
+    final groups = [
+      for (final entry in counts.entries)
+        _DriveRowsGroup(
+          key: entry.key,
+          driveName: names[entry.key]?.driveName ?? '-',
+          sheetName: names[entry.key]?.sheetName ?? '-',
+          count: entry.value,
+        ),
+    ];
+
+    groups.sort((a, b) {
+      final driveCompare = a.driveName.compareTo(b.driveName);
+      if (driveCompare != 0) {
+        return driveCompare;
+      }
+      return a.sheetName.compareTo(b.sheetName);
+    });
+    return groups;
+  }
+}
+
+class _DriveGroupRail extends StatelessWidget {
+  const _DriveGroupRail({
+    required this.groups,
+    required this.totalCount,
+    required this.activeKey,
+    required this.color,
+    required this.onSelect,
+  });
+
+  final List<_DriveRowsGroup> groups;
+  final int totalCount;
+  final String activeKey;
+  final Color color;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+            child: Row(
+              children: [
+                Icon(Icons.account_tree_outlined, size: 18, color: color),
+                const SizedBox(width: 8),
+                Text(
+                  'Drive / Sheets',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              children: [
+                _DriveGroupRailItem(
+                  icon: Icons.all_inbox_outlined,
+                  title: '전체 데이터',
+                  subtitle: '검색 결과 전체',
+                  count: totalCount,
+                  selected: activeKey == 'all',
+                  color: color,
+                  onTap: () => onSelect('all'),
+                ),
+                for (final group in groups)
+                  _DriveGroupRailItem(
+                    icon: Icons.grid_on_rounded,
+                    title: group.sheetName,
+                    subtitle: group.driveName,
+                    count: group.count,
+                    selected: activeKey == group.key,
+                    color: color,
+                    onTap: () => onSelect(group.key),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriveGroupRailItem extends StatelessWidget {
+  const _DriveGroupRailItem({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.count,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final int count;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: selected ? color.withValues(alpha: 0.08) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 19,
+                  color: selected ? color : KangColors.slate,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: selected ? color : KangColors.ink,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                    ),
-                ],
-              ),
-          ],
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: KangColors.slate,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _StatusPill(
+                  text: '$count',
+                  color: selected ? color : KangColors.slate,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+class _DriveGroupDropdown extends StatelessWidget {
+  const _DriveGroupDropdown({
+    required this.groups,
+    required this.totalCount,
+    required this.activeKey,
+    required this.onChanged,
+  });
+
+  final List<_DriveRowsGroup> groups;
+  final int totalCount;
+  final String activeKey;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      initialValue: activeKey,
+      decoration: InputDecoration(
+        labelText: 'Drive / Sheets 선택',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.white,
+      ),
+      items: [
+        DropdownMenuItem(value: 'all', child: Text('전체 데이터 ($totalCount개)')),
+        for (final group in groups)
+          DropdownMenuItem(
+            value: group.key,
+            child: Text(
+              '${group.driveName} / ${group.sheetName} (${group.count}개)',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _DriveRowsResultList extends StatelessWidget {
+  const _DriveRowsResultList({required this.rows, required this.color});
+
+  final List<GoogleDriveTableRowData> rows;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) {
+      return const _DriveRowsEmptyState();
+    }
+
+    return _DriveRowsGridTable(rows: rows, color: color, fillHeight: true);
+  }
+}
+
+class _DriveRowsEmptyState extends StatelessWidget {
+  const _DriveRowsEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: const Center(
+        child: Padding(
+          padding: EdgeInsets.all(22),
+          child: _CalendarMessage(
+            icon: Icons.search_off_rounded,
+            text: '조건에 맞는 저장 데이터가 없습니다.',
+            color: KangColors.slate,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DriveRowsGridTable extends StatelessWidget {
+  const _DriveRowsGridTable({
+    required this.rows,
+    required this.color,
+    this.fillHeight = false,
+  });
+
+  final List<GoogleDriveTableRowData> rows;
+  final Color color;
+  final bool fillHeight;
+
+  static const _textColumnLabels = [
+    'text01',
+    'text02',
+    'text03',
+    'text04',
+    'text05',
+    'text06',
+    'text07',
+    'text08',
+    'text09',
+    'text10',
+    'text11',
+    'text12',
+    'text13',
+    'text14',
+    'text15',
+    'text16',
+    'text17',
+    'text18',
+    'text19',
+    'text20',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final table = DataTable(
+      headingRowHeight: 46,
+      dataRowMinHeight: 46,
+      dataRowMaxHeight: 64,
+      horizontalMargin: 14,
+      columnSpacing: 18,
+      showCheckboxColumn: false,
+      border: TableBorder(
+        horizontalInside: BorderSide(color: KangColors.line),
+        verticalInside: BorderSide(
+          color: KangColors.line.withValues(alpha: 0.55),
+        ),
+      ),
+      headingRowColor: WidgetStatePropertyAll(color.withValues(alpha: 0.1)),
+      columns: [
+        _gridColumn('#', width: 48),
+        _gridColumn('Drive명', width: 180),
+        _gridColumn('Sheets명', width: 160),
+        for (final label in _textColumnLabels) _gridColumn(label, width: 150),
+      ],
+      rows: [
+        for (var index = 0; index < rows.length; index++)
+          DataRow(
+            color: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.hovered)) {
+                return color.withValues(alpha: 0.06);
+              }
+              return index.isEven
+                  ? Colors.white
+                  : KangColors.purpleWash.withValues(alpha: 0.42);
+            }),
+            cells: [
+              _gridCell('${index + 1}', width: 48, strong: true),
+              _gridCell(_driveRowName(rows[index]), width: 180, strong: true),
+              _gridCell(_driveSheetName(rows[index]), width: 160, strong: true),
+              for (final value in rows[index].values)
+                _gridCell((value ?? '').trim(), width: 150),
+            ],
+          ),
+      ],
+    );
+
+    final scrollableTable = Scrollbar(
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: fillHeight ? SingleChildScrollView(child: table) : table,
+      ),
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: fillHeight ? scrollableTable : scrollableTable,
+    );
+  }
+
+  DataColumn _gridColumn(String label, {required double width}) {
+    return DataColumn(
+      label: SizedBox(
+        width: width,
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: KangColors.royalPurple,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+
+  DataCell _gridCell(
+    String value, {
+    required double width,
+    bool strong = false,
+  }) {
+    return DataCell(
+      SizedBox(
+        width: width,
+        child: Text(
+          value.isEmpty ? '-' : value,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: strong ? KangColors.ink : KangColors.slate,
+            fontSize: 13,
+            fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
+            height: 1.24,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DriveNameLine extends StatelessWidget {
+  const _DriveNameLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 62,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: KangColors.royalPurple,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: KangColors.slate,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _driveRowName(GoogleDriveTableRowData row) {
+  final value = (row.driveName ?? '').trim();
+  return value.isEmpty ? '-' : value;
+}
+
+String _driveSheetName(GoogleDriveTableRowData row) {
+  final value = (row.tabName ?? '').trim();
+  return value.isEmpty ? '-' : value;
+}
+
+String _driveRowGroupKey(GoogleDriveTableRowData row) {
+  return '${_driveRowName(row)}\u001F${_driveSheetName(row)}';
 }
 
 class _CalendarFeaturePanel extends StatefulWidget {

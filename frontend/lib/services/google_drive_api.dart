@@ -29,13 +29,17 @@ class GoogleDriveApi {
         .toList(growable: false);
   }
 
-  Future<GoogleDriveImportResult> importSheet(GoogleDriveSheetFile file) async {
+  Future<GoogleDriveImportResult> importSheet(
+    GoogleDriveSheetFile file, {
+    required String sheetName,
+  }) async {
     final response = await _postJson('/drive/import', {
       'id_token': await _idToken(),
       'google_access_token':
           await FirebaseSocialAuth.requestGoogleDriveSheetsAccessToken(),
       'file_id': file.id,
       'file_name': file.name,
+      'sheet_name': sheetName,
       'max_rows': 1000,
     });
     final json = _decode(response);
@@ -107,19 +111,29 @@ class GoogleDriveSheetFile {
   const GoogleDriveSheetFile({
     required this.id,
     required this.name,
+    this.sheetNames = const [],
     this.modifiedTime,
     this.webViewLink,
   });
 
   final String id;
   final String name;
+  final List<String> sheetNames;
   final String? modifiedTime;
   final String? webViewLink;
+
+  String get displayName {
+    final trimmedName = name.trim();
+    return trimmedName.isEmpty ? '이름 없는 Google Sheet' : trimmedName;
+  }
 
   factory GoogleDriveSheetFile.fromJson(Map<String, dynamic> json) {
     return GoogleDriveSheetFile(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Untitled sheet',
+      sheetNames: (json['sheet_names'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
       modifiedTime: json['modified_time'] as String?,
       webViewLink: json['web_view_link'] as String?,
     );
@@ -130,12 +144,14 @@ class GoogleDriveImportResult {
   const GoogleDriveImportResult({
     required this.fileId,
     required this.fileName,
+    this.sheetName,
     required this.importedRows,
     required this.sheetCount,
   });
 
   final String fileId;
   final String fileName;
+  final String? sheetName;
   final int importedRows;
   final int sheetCount;
 
@@ -143,6 +159,7 @@ class GoogleDriveImportResult {
     return GoogleDriveImportResult(
       fileId: json['file_id'] as String? ?? '',
       fileName: json['file_name'] as String? ?? '',
+      sheetName: json['sheet_name'] as String?,
       importedRows: json['imported_rows'] as int? ?? 0,
       sheetCount: json['sheet_count'] as int? ?? 0,
     );
