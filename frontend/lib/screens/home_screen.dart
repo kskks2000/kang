@@ -2503,6 +2503,13 @@ class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
     List<GoogleDriveTableRowData> rows,
   ) {
     return [
+      for (var index = 1; index < 20; index++)
+        if (_hasTextColumnData(rows, index))
+          _DriveRowsGridColumn(
+            'text${(index + 1).toString().padLeft(2, '0')}',
+            _textColumnWidthFor(rows, index),
+            (row) => _driveTextValue(row, index),
+          ),
       _DriveRowsGridColumn(
         'Drive명',
         _columnWidthFor(rows, _driveRowName, minWidth: 180, maxWidth: 260),
@@ -2515,13 +2522,16 @@ class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
         _driveSheetName,
         strong: true,
       ),
-      for (var index = 1; index < 20; index++)
-        _DriveRowsGridColumn(
-          'text${(index + 1).toString().padLeft(2, '0')}',
-          _textColumnWidthFor(rows, index),
-          (row) => _driveTextValue(row, index),
-        ),
     ];
+  }
+
+  bool _hasTextColumnData(List<GoogleDriveTableRowData> rows, int index) {
+    return rows.any((row) => _hasVisibleCellData(_driveTextValue(row, index)));
+  }
+
+  bool _hasVisibleCellData(String value) {
+    final normalized = value.trim();
+    return normalized.isNotEmpty && normalized != '-';
   }
 
   double _textColumnWidthFor(List<GoogleDriveTableRowData> rows, int index) {
@@ -2570,7 +2580,7 @@ class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
 
     final scores = [
       for (final row in rows)
-        if (valueFor(row).trim().isNotEmpty) _textWidthScore(valueFor(row)),
+        if (_hasVisibleCellData(valueFor(row))) _textWidthScore(valueFor(row)),
     ]..sort();
     if (scores.isEmpty) {
       return minWidth;
