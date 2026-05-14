@@ -51,6 +51,13 @@
         }
       },
       {
+        "source": "/drive/**",
+        "function": {
+          "functionId": "api",
+          "region": "asia-northeast3"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

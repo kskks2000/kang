@@ -7,6 +7,9 @@ import '../app_config.dart';
 import 'auth_api.dart';
 import 'firebase_social_auth.dart';
 
+const int _googleDriveImportRowLimit = 100000;
+const int _googleDriveSavedRowsLimit = 25000;
+
 class GoogleDriveApi {
   GoogleDriveApi({http.Client? client}) : _client = client ?? http.Client();
 
@@ -23,10 +26,11 @@ class GoogleDriveApi {
     final json = _decode(response);
     _throwIfFailed(response, json, 'Google Drive 파일을 불러오지 못했습니다.');
     final files = json['files'] as List<dynamic>? ?? const [];
-    return files
+    final parsedFiles = files
         .whereType<Map<String, dynamic>>()
         .map(GoogleDriveSheetFile.fromJson)
         .toList(growable: false);
+    return _sortSheetFiles(parsedFiles);
   }
 
   Future<GoogleDriveImportResult> importSheet(
@@ -40,7 +44,7 @@ class GoogleDriveApi {
       'file_id': file.id,
       'file_name': file.name,
       'sheet_name': sheetName,
-      'max_rows': 1000,
+      'max_rows': _googleDriveImportRowLimit,
     });
     final json = _decode(response);
     _throwIfFailed(response, json, 'Google Sheet를 가져오지 못했습니다.');
@@ -51,7 +55,7 @@ class GoogleDriveApi {
     final response = await _postJson('/drive/rows', {
       'id_token': await _idToken(),
       'search': search.trim().isEmpty ? null : search.trim(),
-      'limit': 500,
+      'limit': _googleDriveSavedRowsLimit,
     });
     final json = _decode(response);
     _throwIfFailed(response, json, '저장된 Google Drive 데이터를 불러오지 못했습니다.');
@@ -111,6 +115,7 @@ class GoogleDriveSheetFile {
   const GoogleDriveSheetFile({
     required this.id,
     required this.name,
+    this.folderName,
     this.sheetNames = const [],
     this.modifiedTime,
     this.webViewLink,
@@ -118,6 +123,7 @@ class GoogleDriveSheetFile {
 
   final String id;
   final String name;
+  final String? folderName;
   final List<String> sheetNames;
   final String? modifiedTime;
   final String? webViewLink;
@@ -127,10 +133,16 @@ class GoogleDriveSheetFile {
     return trimmedName.isEmpty ? '이름 없는 Google Sheet' : trimmedName;
   }
 
+  String get folderDisplayName {
+    final trimmedName = (folderName ?? '').trim();
+    return trimmedName.isEmpty ? '-' : trimmedName;
+  }
+
   factory GoogleDriveSheetFile.fromJson(Map<String, dynamic> json) {
     return GoogleDriveSheetFile(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Untitled sheet',
+      folderName: json['folder_name'] as String?,
       sheetNames: (json['sheet_names'] as List<dynamic>? ?? const [])
           .whereType<String>()
           .toList(growable: false),
@@ -138,6 +150,36 @@ class GoogleDriveSheetFile {
       webViewLink: json['web_view_link'] as String?,
     );
   }
+}
+
+List<GoogleDriveSheetFile> _sortSheetFiles(List<GoogleDriveSheetFile> files) {
+  final sortedFiles = files.toList(growable: false);
+  sortedFiles.sort((a, b) {
+    final folderCompare = _compareSheetFileText(a.folderName, b.folderName);
+    if (folderCompare != 0) {
+      return folderCompare;
+    }
+
+    final driveCompare = _compareSheetFileText(a.name, b.name);
+    if (driveCompare != 0) {
+      return driveCompare;
+    }
+
+    return a.id.compareTo(b.id);
+  });
+  return sortedFiles;
+}
+
+int _compareSheetFileText(String? a, String? b) {
+  final left = (a ?? '').trim().toLowerCase();
+  final right = (b ?? '').trim().toLowerCase();
+  if (left.isEmpty && right.isNotEmpty) {
+    return 1;
+  }
+  if (left.isNotEmpty && right.isEmpty) {
+    return -1;
+  }
+  return left.compareTo(right);
 }
 
 class GoogleDriveImportResult {

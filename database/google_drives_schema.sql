@@ -38,6 +38,15 @@ ALTER TABLE kang.google_drives
 CREATE INDEX IF NOT EXISTS idx_google_drives_user_id
     ON kang.google_drives USING btree (user_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS ux_google_drives_user_drive_tab_sequence
+    ON kang.google_drives (
+        user_id,
+        btrim(COALESCE(drivename, '')),
+        btrim(COALESCE(tabname, '')),
+        btrim(COALESCE(text01, ''))
+    )
+    WHERE btrim(COALESCE(text01, '')) <> '';
+
 DO $$
 BEGIN
     IF NOT EXISTS (

@@ -18,14 +18,14 @@ _handler = FastAPIWrapper(
         "http://127.0.0.1:5000",
         "http://127.0.0.1:5004",
     ],
-    timeout=60,
+    timeout=300,
 )
 
 
 @https_fn.on_request(
     region="asia-northeast3",
-    timeout_sec=60,
-    memory=options.MemoryOption.MB_512,
+    timeout_sec=300,
+    memory=options.MemoryOption.MB_1GB,
 )
 def api(req: https_fn.Request) -> https_fn.Response:
     return _handler(req)

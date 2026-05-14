@@ -31,7 +31,7 @@ class FirebaseSocialAuth {
   }
 
   static Future<String> requestGoogleCalendarAccessToken({
-    bool forceConsent = true,
+    bool forceConsent = false,
   }) async {
     final cachedToken = _calendarAccessToken;
     if (cachedToken != null && cachedToken.isNotEmpty) {
@@ -60,7 +60,7 @@ class FirebaseSocialAuth {
   }
 
   static Future<String> requestGoogleDriveSheetsAccessToken({
-    bool forceConsent = true,
+    bool forceConsent = false,
   }) async {
     final cachedToken = _driveSheetsAccessToken;
     if (cachedToken != null && cachedToken.isNotEmpty) {
@@ -100,10 +100,11 @@ class FirebaseSocialAuth {
       provider.addScope(scope);
     }
 
-    provider.setCustomParameters({
-      'prompt': promptConsent ? 'consent select_account' : 'select_account',
-      'include_granted_scopes': 'true',
-    });
+    final customParameters = {'include_granted_scopes': 'true'};
+    if (promptConsent) {
+      customParameters['prompt'] = 'consent select_account';
+    }
+    provider.setCustomParameters(customParameters);
 
     return provider;
   }

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -1110,7 +1112,7 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
                   onPressed: _loadRows,
                 ),
                 labelText: '파워 검색',
-                hintText: '파일명, 탭명, text01~text20 전체 검색',
+                hintText: '파일명, 탭명, 순번, text02~text20 전체 검색',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -1294,7 +1296,11 @@ class _DriveFileTile extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      _DriveNameLine(label: 'Drive명', value: file.displayName),
+                      _DriveNameLine(
+                        label: '폴더명',
+                        value: file.folderDisplayName,
+                      ),
+                      _DriveNameLine(label: '드라이브명', value: file.displayName),
                       _DriveNameLine(
                         label: 'Sheet 탭',
                         value: file.sheetNames.isEmpty
@@ -1782,7 +1788,7 @@ class _DriveRowsViewerSearch extends StatelessWidget {
                 },
               ),
         labelText: '저장 데이터 검색',
-        hintText: 'Drive명, Sheets명, text01~text20 전체 검색',
+        hintText: 'Drive명, Sheets명, 순번, text02~text20 전체 검색',
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -2131,7 +2137,7 @@ class _DriveRowsEmptyState extends StatelessWidget {
   }
 }
 
-class _DriveRowsGridTable extends StatelessWidget {
+class _DriveRowsGridTable extends StatefulWidget {
   const _DriveRowsGridTable({
     required this.rows,
     required this.color,
@@ -2142,79 +2148,40 @@ class _DriveRowsGridTable extends StatelessWidget {
   final Color color;
   final bool fillHeight;
 
-  static const _textColumnLabels = [
-    'text01',
-    'text02',
-    'text03',
-    'text04',
-    'text05',
-    'text06',
-    'text07',
-    'text08',
-    'text09',
-    'text10',
-    'text11',
-    'text12',
-    'text13',
-    'text14',
-    'text15',
-    'text16',
-    'text17',
-    'text18',
-    'text19',
-    'text20',
-  ];
+  @override
+  State<_DriveRowsGridTable> createState() => _DriveRowsGridTableState();
+}
+
+class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
+  static const _firstColumnWidth = 96.0;
+  static const _headingRowHeight = 46.0;
+  static const _dataRowHeight = 54.0;
+  static const _maxTableHeight = 460.0;
+
+  final ScrollController _headerHorizontalController = ScrollController();
+  final ScrollController _bodyHorizontalController = ScrollController();
+  final ScrollController _frozenVerticalController = ScrollController();
+  final ScrollController _bodyVerticalController = ScrollController();
+
+  bool _syncingHorizontal = false;
+  bool _syncingVertical = false;
+
+  @override
+  void dispose() {
+    _headerHorizontalController.dispose();
+    _bodyHorizontalController.dispose();
+    _frozenVerticalController.dispose();
+    _bodyVerticalController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final table = DataTable(
-      headingRowHeight: 46,
-      dataRowMinHeight: 46,
-      dataRowMaxHeight: 64,
-      horizontalMargin: 14,
-      columnSpacing: 18,
-      showCheckboxColumn: false,
-      border: TableBorder(
-        horizontalInside: BorderSide(color: KangColors.line),
-        verticalInside: BorderSide(
-          color: KangColors.line.withValues(alpha: 0.55),
-        ),
-      ),
-      headingRowColor: WidgetStatePropertyAll(color.withValues(alpha: 0.1)),
-      columns: [
-        _gridColumn('#', width: 48),
-        _gridColumn('Drive명', width: 180),
-        _gridColumn('Sheets명', width: 160),
-        for (final label in _textColumnLabels) _gridColumn(label, width: 150),
-      ],
-      rows: [
-        for (var index = 0; index < rows.length; index++)
-          DataRow(
-            color: WidgetStateProperty.resolveWith((states) {
-              if (states.contains(WidgetState.hovered)) {
-                return color.withValues(alpha: 0.06);
-              }
-              return index.isEven
-                  ? Colors.white
-                  : KangColors.purpleWash.withValues(alpha: 0.42);
-            }),
-            cells: [
-              _gridCell('${index + 1}', width: 48, strong: true),
-              _gridCell(_driveRowName(rows[index]), width: 180, strong: true),
-              _gridCell(_driveSheetName(rows[index]), width: 160, strong: true),
-              for (final value in rows[index].values)
-                _gridCell((value ?? '').trim(), width: 150),
-            ],
-          ),
-      ],
-    );
-
-    final scrollableTable = Scrollbar(
-      thumbVisibility: true,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: fillHeight ? SingleChildScrollView(child: table) : table,
-      ),
+    final sortedRows = _sortDriveRowsForDisplay(widget.rows);
+    final scrollColumns = _scrollColumns;
+    final scrollWidth = scrollColumns.fold<double>(
+      0,
+      (total, column) => total + column.width,
     );
 
     return Container(
@@ -2224,50 +2191,445 @@ class _DriveRowsGridTable extends StatelessWidget {
         border: Border.all(color: KangColors.line),
       ),
       clipBehavior: Clip.antiAlias,
-      child: fillHeight ? scrollableTable : scrollableTable,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final naturalHeight =
+              _headingRowHeight + sortedRows.length * _dataRowHeight;
+          final boundedHeight =
+              widget.fillHeight && constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : math.min(naturalHeight, _maxTableHeight);
+          final tableHeight = math.max(
+            _headingRowHeight + _dataRowHeight,
+            boundedHeight,
+          );
+
+          return SizedBox(
+            height: tableHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: _firstColumnWidth,
+                  child: Column(
+                    children: [
+                      _gridHeaderCell(
+                        '순번',
+                        width: _firstColumnWidth,
+                        frozen: true,
+                      ),
+                      Expanded(
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            _syncVerticalScroll(
+                              notification,
+                              fromFrozenColumn: true,
+                            );
+                            return false;
+                          },
+                          child: ListView.builder(
+                            controller: _frozenVerticalController,
+                            primary: false,
+                            itemExtent: _dataRowHeight,
+                            itemCount: sortedRows.length,
+                            itemBuilder: (context, index) {
+                              return _gridBodyCell(
+                                _driveRowSequence(sortedRows[index]),
+                                width: _firstColumnWidth,
+                                rowIndex: index,
+                                strong: true,
+                                frozen: true,
+                                label: '순번',
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: _headingRowHeight,
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            _syncHorizontalScroll(
+                              notification,
+                              fromHeader: true,
+                            );
+                            return false;
+                          },
+                          child: SingleChildScrollView(
+                            controller: _headerHorizontalController,
+                            scrollDirection: Axis.horizontal,
+                            child: _gridHeaderRow(scrollColumns, scrollWidth),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Scrollbar(
+                          controller: _bodyVerticalController,
+                          thumbVisibility: true,
+                          notificationPredicate: (notification) =>
+                              notification.metrics.axis == Axis.vertical,
+                          child: Scrollbar(
+                            controller: _bodyHorizontalController,
+                            thumbVisibility: true,
+                            notificationPredicate: (notification) =>
+                                notification.metrics.axis == Axis.horizontal,
+                            child: NotificationListener<ScrollNotification>(
+                              onNotification: (notification) {
+                                _syncHorizontalScroll(
+                                  notification,
+                                  fromHeader: false,
+                                );
+                                return false;
+                              },
+                              child: SingleChildScrollView(
+                                controller: _bodyHorizontalController,
+                                scrollDirection: Axis.horizontal,
+                                child: SizedBox(
+                                  width: scrollWidth,
+                                  child:
+                                      NotificationListener<ScrollNotification>(
+                                        onNotification: (notification) {
+                                          _syncVerticalScroll(
+                                            notification,
+                                            fromFrozenColumn: false,
+                                          );
+                                          return false;
+                                        },
+                                        child: ListView.builder(
+                                          controller: _bodyVerticalController,
+                                          primary: false,
+                                          itemExtent: _dataRowHeight,
+                                          itemCount: sortedRows.length,
+                                          itemBuilder: (context, index) {
+                                            return _gridDataRow(
+                                              sortedRows[index],
+                                              index,
+                                              scrollColumns,
+                                              scrollWidth,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
-  DataColumn _gridColumn(String label, {required double width}) {
-    return DataColumn(
-      label: SizedBox(
-        width: width,
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: KangColors.royalPurple,
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
-          ),
+  List<_DriveRowsGridColumn> get _scrollColumns {
+    return [
+      _DriveRowsGridColumn('Drive명', 180, _driveRowName, strong: true),
+      _DriveRowsGridColumn('Sheets명', 160, _driveSheetName, strong: true),
+      for (var index = 1; index < 20; index++)
+        _DriveRowsGridColumn(
+          'text${(index + 1).toString().padLeft(2, '0')}',
+          150,
+          (row) => _driveTextValue(row, index),
+        ),
+    ];
+  }
+
+  Widget _gridHeaderRow(
+    List<_DriveRowsGridColumn> columns,
+    double scrollWidth,
+  ) {
+    return SizedBox(
+      width: scrollWidth,
+      height: _headingRowHeight,
+      child: Row(
+        children: [
+          for (final column in columns)
+            _gridHeaderCell(column.label, width: column.width),
+        ],
+      ),
+    );
+  }
+
+  Widget _gridDataRow(
+    GoogleDriveTableRowData row,
+    int rowIndex,
+    List<_DriveRowsGridColumn> columns,
+    double scrollWidth,
+  ) {
+    return SizedBox(
+      width: scrollWidth,
+      height: _dataRowHeight,
+      child: Row(
+        children: [
+          for (final column in columns)
+            _gridBodyCell(
+              column.valueFor(row),
+              width: column.width,
+              rowIndex: rowIndex,
+              strong: column.strong,
+              label: column.label,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _gridHeaderCell(
+    String label, {
+    required double width,
+    bool frozen = false,
+  }) {
+    return Container(
+      width: width,
+      height: _headingRowHeight,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: frozen
+            ? widget.color.withValues(alpha: 0.16)
+            : widget.color.withValues(alpha: 0.1),
+        border: Border(
+          right: BorderSide(color: KangColors.line.withValues(alpha: 0.7)),
+          bottom: const BorderSide(color: KangColors.line),
+        ),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: KangColors.royalPurple,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );
   }
 
-  DataCell _gridCell(
+  Widget _gridBodyCell(
     String value, {
     required double width,
+    required int rowIndex,
     bool strong = false,
+    bool frozen = false,
+    String? label,
   }) {
-    return DataCell(
-      SizedBox(
-        width: width,
-        child: Text(
-          value.isEmpty ? '-' : value,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: strong ? KangColors.ink : KangColors.slate,
-            fontSize: 13,
-            fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
-            height: 1.24,
-          ),
-        ),
+    final alternateColor = KangColors.purpleWash.withValues(alpha: 0.42);
+    final baseColor = rowIndex.isEven ? Colors.white : alternateColor;
+    final backgroundColor = frozen
+        ? Color.alphaBlend(widget.color.withValues(alpha: 0.04), baseColor)
+        : baseColor;
+    final displayValue = value.isEmpty ? '-' : value;
+    final normalizedValue = value.trim();
+    final canOpenDetail =
+        normalizedValue.isNotEmpty &&
+        normalizedValue != '-' &&
+        (normalizedValue.length > 18 || normalizedValue.contains('\n'));
+    final text = Text(
+      displayValue,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: strong ? KangColors.ink : KangColors.slate,
+        fontSize: 13,
+        fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
+        height: 1.24,
       ),
     );
+    final content = canOpenDetail
+        ? Tooltip(
+            message: value,
+            waitDuration: const Duration(milliseconds: 350),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(6),
+              onTap: () => _showCellDetail(label ?? '', value),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                child: Row(
+                  children: [
+                    Expanded(child: text),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.open_in_full_rounded,
+                      size: 13,
+                      color: widget.color.withValues(alpha: 0.7),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : text;
+
+    return Container(
+      width: width,
+      height: _dataRowHeight,
+      alignment: Alignment.centerLeft,
+      padding: EdgeInsets.symmetric(
+        horizontal: canOpenDetail ? 10 : 14,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        border: Border(
+          right: BorderSide(color: KangColors.line.withValues(alpha: 0.55)),
+          bottom: const BorderSide(color: KangColors.line),
+        ),
+      ),
+      child: content,
+    );
   }
+
+  Future<void> _showCellDetail(String label, String value) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final viewport = MediaQuery.sizeOf(dialogContext);
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 720,
+              maxHeight: viewport.height - 48,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
+                  decoration: BoxDecoration(
+                    color: widget.color.withValues(alpha: 0.1),
+                    border: Border(bottom: BorderSide(color: KangColors.line)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          label.isEmpty ? '셀 내용' : label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: KangColors.ink,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '닫기',
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(18),
+                    child: SelectableText(
+                      value,
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        height: 1.55,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _syncHorizontalScroll(
+    ScrollNotification notification, {
+    required bool fromHeader,
+  }) {
+    if (_syncingHorizontal || notification.metrics.axis != Axis.horizontal) {
+      return;
+    }
+
+    final target = fromHeader
+        ? _bodyHorizontalController
+        : _headerHorizontalController;
+    if (!target.hasClients) {
+      return;
+    }
+
+    final nextOffset = notification.metrics.pixels
+        .clamp(0.0, target.position.maxScrollExtent)
+        .toDouble();
+    if ((target.offset - nextOffset).abs() < 0.5) {
+      return;
+    }
+
+    _syncingHorizontal = true;
+    target.jumpTo(nextOffset);
+    _syncingHorizontal = false;
+  }
+
+  void _syncVerticalScroll(
+    ScrollNotification notification, {
+    required bool fromFrozenColumn,
+  }) {
+    if (_syncingVertical || notification.metrics.axis != Axis.vertical) {
+      return;
+    }
+
+    final target = fromFrozenColumn
+        ? _bodyVerticalController
+        : _frozenVerticalController;
+    if (!target.hasClients) {
+      return;
+    }
+
+    final nextOffset = notification.metrics.pixels
+        .clamp(0.0, target.position.maxScrollExtent)
+        .toDouble();
+    if ((target.offset - nextOffset).abs() < 0.5) {
+      return;
+    }
+
+    _syncingVertical = true;
+    target.jumpTo(nextOffset);
+    _syncingVertical = false;
+  }
+}
+
+class _DriveRowsGridColumn {
+  const _DriveRowsGridColumn(
+    this.label,
+    this.width,
+    this.valueFor, {
+    this.strong = false,
+  });
+
+  final String label;
+  final double width;
+  final String Function(GoogleDriveTableRowData row) valueFor;
+  final bool strong;
 }
 
 class _DriveNameLine extends StatelessWidget {
@@ -2316,6 +2678,79 @@ String _driveRowName(GoogleDriveTableRowData row) {
 String _driveSheetName(GoogleDriveTableRowData row) {
   final value = (row.tabName ?? '').trim();
   return value.isEmpty ? '-' : value;
+}
+
+String _driveRowSequence(GoogleDriveTableRowData row) {
+  return _driveTextValue(row, 0);
+}
+
+String _driveTextValue(GoogleDriveTableRowData row, int index) {
+  if (index < 0 || index >= row.values.length) {
+    return '';
+  }
+  return (row.values[index] ?? '').trim();
+}
+
+List<GoogleDriveTableRowData> _sortDriveRowsForDisplay(
+  List<GoogleDriveTableRowData> rows,
+) {
+  final sortedRows = rows.toList(growable: false);
+  sortedRows.sort(_compareDriveRowsForDisplay);
+  return sortedRows;
+}
+
+int _compareDriveRowsForDisplay(
+  GoogleDriveTableRowData a,
+  GoogleDriveTableRowData b,
+) {
+  final driveCompare = _driveRowName(a).compareTo(_driveRowName(b));
+  if (driveCompare != 0) {
+    return driveCompare;
+  }
+
+  final sheetCompare = _driveSheetName(a).compareTo(_driveSheetName(b));
+  if (sheetCompare != 0) {
+    return sheetCompare;
+  }
+
+  final titleCompare = _driveRowTitlePriority(
+    a,
+  ).compareTo(_driveRowTitlePriority(b));
+  if (titleCompare != 0) {
+    return titleCompare;
+  }
+
+  final aNumber = _driveRowSequenceNumber(a);
+  final bNumber = _driveRowSequenceNumber(b);
+  if (aNumber != null && bNumber != null) {
+    final numberCompare = aNumber.compareTo(bNumber);
+    if (numberCompare != 0) {
+      return numberCompare;
+    }
+  } else if (aNumber != null) {
+    return -1;
+  } else if (bNumber != null) {
+    return 1;
+  }
+
+  final sequenceCompare = _driveRowSequence(a).compareTo(_driveRowSequence(b));
+  if (sequenceCompare != 0) {
+    return sequenceCompare;
+  }
+
+  return a.id.compareTo(b.id);
+}
+
+int _driveRowTitlePriority(GoogleDriveTableRowData row) {
+  return _driveRowSequence(row) == '순번' ? 0 : 1;
+}
+
+num? _driveRowSequenceNumber(GoogleDriveTableRowData row) {
+  final normalized = _driveRowSequence(row).replaceAll(',', '').trim();
+  if (normalized.isEmpty) {
+    return null;
+  }
+  return num.tryParse(normalized);
 }
 
 String _driveRowGroupKey(GoogleDriveTableRowData row) {

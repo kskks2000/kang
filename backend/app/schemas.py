@@ -67,6 +67,7 @@ class DriveFilesRequest(BaseModel):
 class DriveSheetFile(BaseModel):
     id: str
     name: str
+    folder_name: Optional[str] = None
     sheet_names: list[str] = Field(default_factory=list)
     modified_time: Optional[str] = None
     web_view_link: Optional[str] = None
@@ -82,7 +83,7 @@ class DriveImportRequest(BaseModel):
     file_id: str = Field(min_length=5, max_length=300)
     file_name: str = Field(min_length=1, max_length=500)
     sheet_name: Optional[str] = Field(default=None, min_length=1, max_length=500)
-    max_rows: int = Field(default=1000, ge=1, le=5000)
+    max_rows: int = Field(default=100000, ge=1, le=100000)
 
 
 class DriveImportResponse(BaseModel):
@@ -96,7 +97,7 @@ class DriveImportResponse(BaseModel):
 class DriveRowsRequest(BaseModel):
     id_token: str = Field(min_length=20)
     search: Optional[str] = Field(default=None, max_length=200)
-    limit: int = Field(default=200, ge=1, le=1000)
+    limit: int = Field(default=25000, ge=1, le=50000)
 
 
 class GoogleDriveRow(BaseModel):
