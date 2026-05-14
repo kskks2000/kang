@@ -1046,17 +1046,19 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
       context: context,
       builder: (dialogContext) {
         final viewport = MediaQuery.sizeOf(dialogContext);
+        final compact = viewport.width < 640;
         return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 22,
-            vertical: 22,
+          insetPadding: compact
+              ? const EdgeInsets.all(6)
+              : const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(compact ? 10 : 8),
           ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           clipBehavior: Clip.antiAlias,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: 1160,
-              maxHeight: viewport.height - 44,
+              maxWidth: compact ? viewport.width - 12 : 1160,
+              maxHeight: compact ? viewport.height - 12 : viewport.height - 44,
             ),
             child: _DriveRowsViewer(
               rows: rows,
@@ -1591,51 +1593,65 @@ class _DriveRowsViewerState extends State<_DriveRowsViewer> {
             rowCount: widget.rows.length,
           ),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final wide = constraints.maxWidth >= 860;
-                  return Column(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 860;
+                final compact =
+                    constraints.maxWidth < 640 || constraints.maxHeight < 620;
+                return Padding(
+                  padding: compact
+                      ? const EdgeInsets.fromLTRB(10, 10, 10, 10)
+                      : const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _DriveRowsViewerSearch(
                         controller: _controller,
                         color: widget.color,
+                        compact: compact,
                         onChanged: (_) => setState(() {}),
                       ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          _DriveViewerStat(
-                            icon: Icons.table_rows_outlined,
-                            label: '저장 행',
-                            value: '${widget.rows.length}개',
-                            color: widget.color,
-                          ),
-                          _DriveViewerStat(
-                            icon: Icons.folder_copy_outlined,
-                            label: 'Drive',
-                            value: '$driveCount개',
-                            color: const Color(0xFF2F6FED),
-                          ),
-                          _DriveViewerStat(
-                            icon: Icons.grid_on_rounded,
-                            label: 'Sheets',
-                            value: '$sheetCount개',
-                            color: KangColors.mintDeep,
-                          ),
-                          _DriveViewerStat(
-                            icon: Icons.filter_alt_outlined,
-                            label: '현재 보기',
-                            value: '${visibleRows.length}개',
-                            color: KangColors.royalPurple,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
+                      SizedBox(height: compact ? 8 : 12),
+                      if (compact)
+                        _DriveViewerStatStrip(
+                          rowCount: widget.rows.length,
+                          driveCount: driveCount,
+                          sheetCount: sheetCount,
+                          visibleCount: visibleRows.length,
+                          color: widget.color,
+                        )
+                      else
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            _DriveViewerStat(
+                              icon: Icons.table_rows_outlined,
+                              label: '저장 행',
+                              value: '${widget.rows.length}개',
+                              color: widget.color,
+                            ),
+                            _DriveViewerStat(
+                              icon: Icons.folder_copy_outlined,
+                              label: 'Drive',
+                              value: '$driveCount개',
+                              color: const Color(0xFF2F6FED),
+                            ),
+                            _DriveViewerStat(
+                              icon: Icons.grid_on_rounded,
+                              label: 'Sheets',
+                              value: '$sheetCount개',
+                              color: KangColors.mintDeep,
+                            ),
+                            _DriveViewerStat(
+                              icon: Icons.filter_alt_outlined,
+                              label: '현재 보기',
+                              value: '${visibleRows.length}개',
+                              color: KangColors.royalPurple,
+                            ),
+                          ],
+                        ),
+                      SizedBox(height: compact ? 8 : 14),
                       Expanded(
                         child: wide
                             ? Row(
@@ -1669,6 +1685,7 @@ class _DriveRowsViewerState extends State<_DriveRowsViewer> {
                                     groups: groups,
                                     totalCount: searchedRows.length,
                                     activeKey: activeGroupKey,
+                                    compact: compact,
                                     onChanged: (key) {
                                       if (key == null) {
                                         return;
@@ -1676,7 +1693,7 @@ class _DriveRowsViewerState extends State<_DriveRowsViewer> {
                                       setState(() => _activeGroupKey = key);
                                     },
                                   ),
-                                  const SizedBox(height: 12),
+                                  SizedBox(height: compact ? 8 : 12),
                                   Expanded(
                                     child: _DriveRowsResultList(
                                       rows: visibleRows,
@@ -1687,9 +1704,9 @@ class _DriveRowsViewerState extends State<_DriveRowsViewer> {
                               ),
                       ),
                     ],
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -1706,8 +1723,11 @@ class _DriveRowsViewerHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 640;
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 12, 18),
+      padding: compact
+          ? const EdgeInsets.fromLTRB(14, 10, 4, 10)
+          : const EdgeInsets.fromLTRB(20, 18, 12, 18),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: KangColors.line)),
@@ -1715,42 +1735,60 @@ class _DriveRowsViewerHeader extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 46,
-            height: 46,
+            width: compact ? 38 : 46,
+            height: compact ? 38 : 46,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(Icons.dataset_outlined, color: color),
+            child: Icon(
+              Icons.dataset_outlined,
+              color: color,
+              size: compact ? 21 : 24,
+            ),
           ),
-          const SizedBox(width: 14),
+          SizedBox(width: compact ? 10 : 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '저장 데이터 보기',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'kang.google_drives에 저장된 Google Drive / Sheets 데이터',
+                  compact ? '저장 데이터' : '저장 데이터 보기',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: compact ? 19 : null,
+                    fontWeight: FontWeight.w900,
+                    height: 1.12,
+                  ),
                 ),
+                if (!compact) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    'kang.google_drives에 저장된 Google Drive / Sheets 데이터',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                  ),
+                ],
               ],
             ),
           ),
-          _StatusPill(text: '$rowCount개 행', color: color),
-          const SizedBox(width: 6),
+          _StatusPill(
+            text: compact ? '$rowCount개' : '$rowCount개 행',
+            color: color,
+          ),
+          SizedBox(width: compact ? 2 : 6),
           IconButton(
             tooltip: '닫기',
             icon: const Icon(Icons.close_rounded),
+            iconSize: compact ? 22 : 24,
+            constraints: BoxConstraints(
+              minWidth: compact ? 40 : 48,
+              minHeight: compact ? 40 : 48,
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],
@@ -1764,19 +1802,29 @@ class _DriveRowsViewerSearch extends StatelessWidget {
     required this.controller,
     required this.color,
     required this.onChanged,
+    this.compact = false,
   });
 
   final TextEditingController controller;
   final Color color;
   final ValueChanged<String> onChanged;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
       onChanged: onChanged,
+      style: compact ? const TextStyle(fontSize: 14) : null,
       decoration: InputDecoration(
+        isDense: compact,
+        contentPadding: compact
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+            : null,
         prefixIcon: Icon(Icons.manage_search_rounded, color: color),
+        prefixIconConstraints: compact
+            ? const BoxConstraints(minWidth: 40, minHeight: 40)
+            : null,
         suffixIcon: controller.text.isEmpty
             ? null
             : IconButton(
@@ -1852,6 +1900,117 @@ class _DriveViewerStat extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriveViewerStatStrip extends StatelessWidget {
+  const _DriveViewerStatStrip({
+    required this.rowCount,
+    required this.driveCount,
+    required this.sheetCount,
+    required this.visibleCount,
+    required this.color,
+  });
+
+  final int rowCount;
+  final int driveCount;
+  final int sheetCount;
+  final int visibleCount;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _DriveViewerStatChip(
+            icon: Icons.table_rows_outlined,
+            label: '저장',
+            value: '$rowCount개',
+            color: color,
+          ),
+          _DriveViewerStatChip(
+            icon: Icons.folder_copy_outlined,
+            label: 'Drive',
+            value: '$driveCount개',
+            color: const Color(0xFF2F6FED),
+          ),
+          _DriveViewerStatChip(
+            icon: Icons.grid_on_rounded,
+            label: 'Sheets',
+            value: '$sheetCount개',
+            color: KangColors.mintDeep,
+          ),
+          _DriveViewerStatChip(
+            icon: Icons.filter_alt_outlined,
+            label: '보기',
+            value: '$visibleCount개',
+            color: KangColors.royalPurple,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriveViewerStatChip extends StatelessWidget {
+  const _DriveViewerStatChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.09),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: KangColors.slate,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            value,
+            style: const TextStyle(
+              color: KangColors.ink,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ],
       ),
@@ -2063,18 +2222,25 @@ class _DriveGroupDropdown extends StatelessWidget {
     required this.totalCount,
     required this.activeKey,
     required this.onChanged,
+    this.compact = false,
   });
 
   final List<_DriveRowsGroup> groups;
   final int totalCount;
   final String activeKey;
   final ValueChanged<String?> onChanged;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return DropdownButtonFormField<String>(
       initialValue: activeKey,
+      isExpanded: true,
       decoration: InputDecoration(
+        isDense: compact,
+        contentPadding: compact
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 11)
+            : null,
         labelText: 'Drive / Sheets 선택',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         filled: true,
@@ -2178,7 +2344,7 @@ class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
   @override
   Widget build(BuildContext context) {
     final sortedRows = _sortDriveRowsForDisplay(widget.rows);
-    final scrollColumns = _scrollColumns;
+    final scrollColumns = _scrollColumns(sortedRows);
     final scrollWidth = scrollColumns.fold<double>(
       0,
       (total, column) => total + column.width,
@@ -2333,17 +2499,121 @@ class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
     );
   }
 
-  List<_DriveRowsGridColumn> get _scrollColumns {
+  List<_DriveRowsGridColumn> _scrollColumns(
+    List<GoogleDriveTableRowData> rows,
+  ) {
     return [
-      _DriveRowsGridColumn('Drive명', 180, _driveRowName, strong: true),
-      _DriveRowsGridColumn('Sheets명', 160, _driveSheetName, strong: true),
+      _DriveRowsGridColumn(
+        'Drive명',
+        _columnWidthFor(rows, _driveRowName, minWidth: 180, maxWidth: 260),
+        _driveRowName,
+        strong: true,
+      ),
+      _DriveRowsGridColumn(
+        'Sheets명',
+        _columnWidthFor(rows, _driveSheetName, minWidth: 160, maxWidth: 240),
+        _driveSheetName,
+        strong: true,
+      ),
       for (var index = 1; index < 20; index++)
         _DriveRowsGridColumn(
           'text${(index + 1).toString().padLeft(2, '0')}',
-          150,
+          _textColumnWidthFor(rows, index),
           (row) => _driveTextValue(row, index),
         ),
     ];
+  }
+
+  double _textColumnWidthFor(List<GoogleDriveTableRowData> rows, int index) {
+    return switch (index) {
+      1 => _columnWidthFor(
+        rows,
+        (row) => _driveTextValue(row, index),
+        minWidth: 240,
+        maxWidth: 440,
+        charWidth: 8.4,
+      ),
+      2 => _columnWidthFor(
+        rows,
+        (row) => _driveTextValue(row, index),
+        minWidth: 220,
+        maxWidth: 380,
+        charWidth: 8.2,
+      ),
+      3 => _columnWidthFor(
+        rows,
+        (row) => _driveTextValue(row, index),
+        minWidth: 200,
+        maxWidth: 340,
+        charWidth: 8.0,
+      ),
+      _ => _columnWidthFor(
+        rows,
+        (row) => _driveTextValue(row, index),
+        minWidth: 150,
+        maxWidth: 280,
+        charWidth: 7.8,
+      ),
+    };
+  }
+
+  double _columnWidthFor(
+    List<GoogleDriveTableRowData> rows,
+    String Function(GoogleDriveTableRowData row) valueFor, {
+    required double minWidth,
+    required double maxWidth,
+    double charWidth = 8.0,
+  }) {
+    if (rows.isEmpty) {
+      return minWidth;
+    }
+
+    final scores = [
+      for (final row in rows)
+        if (valueFor(row).trim().isNotEmpty) _textWidthScore(valueFor(row)),
+    ]..sort();
+    if (scores.isEmpty) {
+      return minWidth;
+    }
+
+    final score = scores.length < 80
+        ? scores.last
+        : scores[(scores.length * 0.9).floor().clamp(0, scores.length - 1)];
+    final width = 42 + score * charWidth;
+    return width.clamp(minWidth, maxWidth).toDouble();
+  }
+
+  double _textWidthScore(String value) {
+    var currentLine = 0.0;
+    var longestLine = 0.0;
+    for (final rune in value.runes) {
+      if (rune == 10 || rune == 13) {
+        longestLine = math.max(longestLine, currentLine);
+        currentLine = 0;
+        continue;
+      }
+      currentLine += _runeWidthScore(rune);
+    }
+    return math.max(longestLine, currentLine);
+  }
+
+  double _runeWidthScore(int rune) {
+    if (rune == 32) {
+      return 0.55;
+    }
+    if ((rune >= 0xAC00 && rune <= 0xD7A3) ||
+        (rune >= 0x3130 && rune <= 0x318F) ||
+        (rune >= 0x4E00 && rune <= 0x9FFF) ||
+        (rune >= 0x3040 && rune <= 0x30FF)) {
+      return 1.65;
+    }
+    if (rune >= 48 && rune <= 57) {
+      return 0.9;
+    }
+    if ((rune >= 65 && rune <= 90) || (rune >= 97 && rune <= 122)) {
+      return 0.95;
+    }
+    return 0.8;
   }
 
   Widget _gridHeaderRow(
@@ -2497,24 +2767,31 @@ class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
       context: context,
       builder: (dialogContext) {
         final viewport = MediaQuery.sizeOf(dialogContext);
+        final compact = viewport.width < 640;
         return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
+          alignment: compact ? Alignment.bottomCenter : Alignment.center,
+          insetPadding: compact
+              ? const EdgeInsets.fromLTRB(8, 0, 8, 8)
+              : const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(compact ? 12 : 8),
           ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           clipBehavior: Clip.antiAlias,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: 720,
-              maxHeight: viewport.height - 48,
+              maxWidth: compact ? viewport.width - 16 : 720,
+              maxHeight: compact
+                  ? viewport.height * 0.72
+                  : viewport.height - 48,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Container(
-                  padding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
+                  padding: compact
+                      ? const EdgeInsets.fromLTRB(14, 10, 4, 10)
+                      : const EdgeInsets.fromLTRB(18, 14, 8, 14),
                   decoration: BoxDecoration(
                     color: widget.color.withValues(alpha: 0.1),
                     border: Border(bottom: BorderSide(color: KangColors.line)),
@@ -2543,12 +2820,14 @@ class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
                 ),
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(18),
+                    padding: compact
+                        ? const EdgeInsets.fromLTRB(14, 14, 14, 18)
+                        : const EdgeInsets.all(18),
                     child: SelectableText(
                       value,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: KangColors.ink,
-                        fontSize: 15,
+                        fontSize: compact ? 14.5 : 15,
                         fontWeight: FontWeight.w700,
                         height: 1.55,
                       ),
