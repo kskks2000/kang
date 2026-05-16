@@ -101,7 +101,7 @@ class _BrandPanel extends StatelessWidget {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 430),
             child: Text(
-              '캘린더, 파일, 연락처, 개인 기록을 한 번의 로그인으로 안전하게 연결합니다.',
+              '캘린더, 파일, 대학 정보, 개인 기록을 한 번의 로그인으로 안전하게 연결합니다.',
               style: textTheme.bodyMedium?.copyWith(
                 color: KangColors.slate,
                 fontSize: 16,
@@ -114,7 +114,7 @@ class _BrandPanel extends StatelessWidget {
             runSpacing: 10,
             children: [
               _BrandPill(icon: Icons.verified_user_outlined, label: '회원 계정'),
-              _BrandPill(icon: Icons.cloud_done_outlined, label: '연동 준비'),
+              _BrandPill(icon: Icons.cloud_done_outlined, label: '연동 완료'),
               _BrandPill(icon: Icons.lock_outline, label: '보안 로그인'),
             ],
           ),

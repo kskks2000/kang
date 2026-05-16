@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../data/careernet_university_major_offerings.dart';
+import '../data/kess_university_major_stats.dart';
 import '../models/app_user.dart';
 import '../services/firebase_social_auth.dart';
 import '../services/google_calendar_service.dart';
@@ -110,36 +112,37 @@ class _HomeScreenState extends State<HomeScreen> {
         kind: _HomeModuleKind.calendar,
         title: '캘린더',
         subtitle: '일정과 알림',
-        status: '연동 준비',
+        status: '연동 완료',
         icon: Icons.calendar_month_outlined,
         accent: Color(0xFF5B3FA3),
         surface: Color(0xFFF3EEFF),
         screenTitle: '캘린더',
-        screenSubtitle: 'Google Calendar 연결 준비',
+        screenSubtitle: 'Google Calendar 연동 완료',
         screenIcon: Icons.calendar_month_outlined,
       ),
       _HomeModule(
         title: '파일',
         subtitle: 'Drive 문서함',
-        status: '연동 준비',
+        status: '연동 완료',
         kind: _HomeModuleKind.drive,
         icon: Icons.folder_copy_outlined,
         accent: Color(0xFF2DB7A5),
         surface: Color(0xFFE9FBF6),
         screenTitle: '파일',
-        screenSubtitle: 'Google Drive 연결 준비',
+        screenSubtitle: 'Google Drive 연동 완료',
         screenIcon: Icons.folder_copy_outlined,
       ),
       _HomeModule(
-        title: '연락처',
-        subtitle: '사람과 그룹',
-        status: '연동 준비',
-        icon: Icons.contacts_outlined,
+        title: '대학 정보',
+        subtitle: '학과계열 통계',
+        status: 'KESS 2020',
+        icon: Icons.school_outlined,
         accent: Color(0xFF5867D8),
         surface: Color(0xFFEEF0FF),
-        screenTitle: '연락처',
-        screenSubtitle: 'Google Contacts 연결 준비',
-        screenIcon: Icons.contacts_outlined,
+        kind: _HomeModuleKind.university,
+        screenTitle: '대학 정보',
+        screenSubtitle: 'KESS 대학과정 학과계열 통계',
+        screenIcon: Icons.school_outlined,
       ),
       _HomeModule(
         title: '이메일',
@@ -149,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
         accent: Color(0xFFB15C2E),
         surface: Color(0xFFFFF3EA),
         screenTitle: '이메일',
-        screenSubtitle: '메일 연동 준비',
+        screenSubtitle: '메일 연동 예정',
         screenIcon: Icons.alternate_email_rounded,
       ),
       _HomeModule(
@@ -292,7 +295,7 @@ class _ConnectionStatusPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '계정 준비가 완료되었습니다.',
+                    'Google 연동이 활성화되었습니다.',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontSize: 17,
                       fontWeight: FontWeight.w900,
@@ -300,7 +303,7 @@ class _ConnectionStatusPanel extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '캘린더, 파일, 연락처를 차례대로 연결할 수 있습니다.',
+                    '캘린더, 파일, 대학 정보를 Kang에서 바로 확인할 수 있습니다.',
                     style: Theme.of(
                       context,
                     ).textTheme.bodyMedium?.copyWith(fontSize: 13),
@@ -820,6 +823,9 @@ class _FeaturePanel extends StatelessWidget {
     if (module.kind == _HomeModuleKind.drive) {
       return _DriveFeaturePanel(module: module);
     }
+    if (module.kind == _HomeModuleKind.university) {
+      return _UniversityFeaturePanel(module: module);
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -838,7 +844,7 @@ class _FeaturePanel extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Google 연동 준비 상태',
+                    'Google 연동 상태',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -855,14 +861,14 @@ class _FeaturePanel extends StatelessWidget {
             _ReadinessRow(
               icon: Icons.key_outlined,
               label: 'OAuth 연결',
-              value: '다음 단계',
+              value: '연결 완료',
               color: module.accent,
             ),
             const SizedBox(height: 10),
             _ReadinessRow(
               icon: Icons.sync_rounded,
               label: '동기화',
-              value: '대기 중',
+              value: '활성화',
               color: module.accent,
             ),
           ],
@@ -870,6 +876,713 @@ class _FeaturePanel extends StatelessWidget {
       ),
     );
   }
+}
+
+class _UniversityFeaturePanel extends StatefulWidget {
+  const _UniversityFeaturePanel({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  State<_UniversityFeaturePanel> createState() =>
+      _UniversityFeaturePanelState();
+}
+
+class _UniversityFeaturePanelState extends State<_UniversityFeaturePanel> {
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _directorySearchController =
+      TextEditingController();
+
+  _UniversityDataView _activeDataView = _UniversityDataView.directory;
+  String _activeCategory = '전체';
+  String _activeArea = '전체';
+  int _directoryVisibleCount = 80;
+
+  List<UniversityMajorStat> get _detailStats => kessUniversityMajorStats
+      .where((stat) => stat.isDetail)
+      .toList(growable: false);
+
+  List<String> get _categories {
+    return [
+      '전체',
+      ...{for (final stat in _detailStats) stat.largeCategory},
+    ];
+  }
+
+  List<String> get _areas {
+    return [
+      '전체',
+      ...{
+        for (final item in careerNetUniversityMajorOfferings) item.areaName,
+      }.where((area) => area.isNotEmpty),
+    ];
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _directorySearchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final children = _activeDataView == _UniversityDataView.directory
+        ? _directoryChildren(context)
+        : _kessStatsChildren(context);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.school_outlined, color: widget.module.accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '대학 정보',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                _StatusPill(
+                  text: _activeDataView == _UniversityDataView.directory
+                      ? 'CareerNet'
+                      : 'KESS 2020',
+                  color: widget.module.accent,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('대학별 학과'),
+                  selected: _activeDataView == _UniversityDataView.directory,
+                  onSelected: (_) {
+                    setState(
+                      () => _activeDataView = _UniversityDataView.directory,
+                    );
+                  },
+                ),
+                ChoiceChip(
+                  label: const Text('학과계열 통계'),
+                  selected: _activeDataView == _UniversityDataView.kessStats,
+                  onSelected: (_) {
+                    setState(
+                      () => _activeDataView = _UniversityDataView.kessStats,
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _directoryChildren(BuildContext context) {
+    final visibleOfferings = careerNetUniversityMajorOfferings
+        .where((item) => item.matches(_directorySearchController.text))
+        .where((item) => _activeArea == '전체' || item.areaName == _activeArea)
+        .toList(growable: false);
+    final visibleCount = math.min(
+      _directoryVisibleCount,
+      visibleOfferings.length,
+    );
+
+    return [
+      Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          _UniversitySummaryTile(
+            icon: Icons.account_balance_outlined,
+            label: '대학/캠퍼스',
+            value: '$careerNetUniversityMajorSchoolCount개',
+            color: widget.module.accent,
+          ),
+          _UniversitySummaryTile(
+            icon: Icons.school_outlined,
+            label: '개설학과',
+            value: '$careerNetUniversityMajorOfferingCount개',
+            color: KangColors.royalPurple,
+          ),
+          _UniversitySummaryTile(
+            icon: Icons.category_outlined,
+            label: '표준학과',
+            value: '$careerNetUniversityMajorCatalogCount개',
+            color: KangColors.mintDeep,
+          ),
+        ],
+      ),
+      const SizedBox(height: 14),
+      TextField(
+        controller: _directorySearchController,
+        onChanged: (_) {
+          setState(() => _directoryVisibleCount = 80);
+        },
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.manage_search_rounded),
+          labelText: '대학/학과 검색',
+          hintText: '예: 고려대학교, 법학과, 서울특별시',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+      const SizedBox(height: 12),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final area in _areas)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(area),
+                  selected: _activeArea == area,
+                  onSelected: (_) {
+                    setState(() {
+                      _activeArea = area;
+                      _directoryVisibleCount = 80;
+                    });
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _UniversitySourceNote(
+        color: widget.module.accent,
+        title:
+            '$careerNetUniversityMajorSourceTitle · '
+            '표준학과 $careerNetUniversityMajorCatalogCount개',
+        description:
+            '커리어넷 대학교 학과정보의 개설대학 데이터를 기준으로 '
+            '대학명, 캠퍼스, 실제 학과명을 정리했습니다.',
+      ),
+      const SizedBox(height: 14),
+      _DriveRowsHeader(
+        count: visibleOfferings.length,
+        loading: false,
+        color: widget.module.accent,
+        title: '대학별 학과 리스트',
+      ),
+      const SizedBox(height: 8),
+      if (visibleOfferings.isEmpty)
+        const _CalendarMessage(
+          icon: Icons.school_outlined,
+          text: '일치하는 대학별 학과 정보가 없습니다.',
+          color: KangColors.slate,
+        )
+      else ...[
+        for (final item in visibleOfferings.take(visibleCount))
+          _UniversityOfferingTile(item: item, color: widget.module.accent),
+        if (visibleCount < visibleOfferings.length) ...[
+          const SizedBox(height: 4),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.expand_more_rounded),
+            label: Text('더 보기 (${visibleOfferings.length - visibleCount}개 남음)'),
+            onPressed: () {
+              setState(() => _directoryVisibleCount += 80);
+            },
+          ),
+        ],
+      ],
+    ];
+  }
+
+  List<Widget> _kessStatsChildren(BuildContext context) {
+    final totalStat = kessUniversityMajorStats.first;
+    final visibleStats = _detailStats
+        .where((stat) => stat.matches(_searchController.text))
+        .where(
+          (stat) =>
+              _activeCategory == '전체' || stat.largeCategory == _activeCategory,
+        )
+        .toList(growable: false);
+
+    return [
+      Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          _UniversitySummaryTile(
+            icon: Icons.category_outlined,
+            label: '학과 분류',
+            value: '${_detailStats.length}개',
+            color: widget.module.accent,
+          ),
+          _UniversitySummaryTile(
+            icon: Icons.groups_2_outlined,
+            label: '지원자',
+            value: '${_formatKessNumber(totalStat.applicantsTotal)}명',
+            color: KangColors.royalPurple,
+          ),
+          _UniversitySummaryTile(
+            icon: Icons.how_to_reg_outlined,
+            label: '입학자',
+            value: '${_formatKessNumber(totalStat.entrantsTotal)}명',
+            color: KangColors.mintDeep,
+          ),
+        ],
+      ),
+      const SizedBox(height: 14),
+      TextField(
+        controller: _searchController,
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.manage_search_rounded),
+          labelText: '학과 검색',
+          hintText: '대분류, 중분류, 소분류',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+      const SizedBox(height: 12),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final category in _categories)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(category),
+                  selected: _activeCategory == category,
+                  onSelected: (_) {
+                    setState(() => _activeCategory = category);
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _UniversitySourceNote(
+        color: widget.module.accent,
+        title:
+            '$kessUniversityMajorSourceTitle · '
+            '$kessUniversityMajorSurveyYear년',
+        description:
+            'KESS 대학과정 학과계열 통계입니다. '
+            '단위: $kessUniversityMajorUnit',
+      ),
+      const SizedBox(height: 14),
+      _DriveRowsHeader(
+        count: visibleStats.length,
+        loading: false,
+        color: widget.module.accent,
+        title: '학과계열 리스트',
+      ),
+      const SizedBox(height: 8),
+      if (visibleStats.isEmpty)
+        const _CalendarMessage(
+          icon: Icons.school_outlined,
+          text: '일치하는 대학 학과계열 정보가 없습니다.',
+          color: KangColors.slate,
+        )
+      else
+        for (final stat in visibleStats)
+          _UniversityMajorTile(stat: stat, color: widget.module.accent),
+    ];
+  }
+}
+
+enum _UniversityDataView { directory, kessStats }
+
+class _UniversityOfferingTile extends StatelessWidget {
+  const _UniversityOfferingTile({required this.item, required this.color});
+
+  final CareerNetUniversityMajorOffering item;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.account_balance_outlined, color: color),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.schoolName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        item.areaName,
+                        item.campusName,
+                        item.schoolType,
+                      ].where((value) => value.isNotEmpty).join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _StatusPill(text: item.category, color: color),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            item.majorName,
+            style: const TextStyle(
+              color: KangColors.ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (item.catalogMajorName.isNotEmpty &&
+              item.catalogMajorName != item.majorName) ...[
+            const SizedBox(height: 5),
+            Text(
+              '커리어넷 표준학과: ${item.catalogMajorName}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+            ),
+          ],
+          if (item.schoolUrl.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              item.schoolUrl,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: color),
+            ),
+          ],
+          if (item.updatedAt.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _StatusPill(text: '업데이트 ${item.updatedAt}', color: color),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _UniversitySourceNote extends StatelessWidget {
+  const _UniversitySourceNote({
+    required this.color,
+    required this.title,
+    required this.description,
+  });
+
+  final Color color;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.14)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.dataset_linked_outlined, color: color, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: KangColors.ink,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      height: 1.25,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    description,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: KangColors.slate,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UniversitySummaryTile extends StatelessWidget {
+  const _UniversitySummaryTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 164,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UniversityMajorTile extends StatelessWidget {
+  const _UniversityMajorTile({required this.stat, required this.color});
+
+  final UniversityMajorStat stat;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.school_outlined, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      stat.smallCategory,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${stat.largeCategory} · ${stat.middleCategory}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _StatusPill(
+                text: '${stat.fillRate.toStringAsFixed(1)}%',
+                color: color,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _UniversityMetric(
+                label: '입학정원',
+                value: '${_formatKessNumber(stat.admissionQuotaRegular)}명',
+              ),
+              _UniversityMetric(
+                label: '모집인원',
+                value: '${_formatKessNumber(stat.recruitmentTotal)}명',
+              ),
+              _UniversityMetric(
+                label: '지원자',
+                value: '${_formatKessNumber(stat.applicantsTotal)}명',
+              ),
+              _UniversityMetric(
+                label: '입학자',
+                value: '${_formatKessNumber(stat.entrantsTotal)}명',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UniversityMetric extends StatelessWidget {
+  const _UniversityMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 104),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFD),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: KangColors.ink,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatKessNumber(int value) {
+  final text = value.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < text.length; i += 1) {
+    final remaining = text.length - i;
+    buffer.write(text[i]);
+    if (remaining > 1 && remaining % 3 == 1) {
+      buffer.write(',');
+    }
+  }
+  return buffer.toString();
 }
 
 class _DriveFeaturePanel extends StatefulWidget {
@@ -1491,11 +2204,13 @@ class _DriveRowsHeader extends StatelessWidget {
     required this.count,
     required this.loading,
     required this.color,
+    this.title = 'google_drives 저장 데이터',
   });
 
   final int count;
   final bool loading;
   final Color color;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -1505,7 +2220,7 @@ class _DriveRowsHeader extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            'google_drives 저장 데이터',
+            title,
             style: Theme.of(
               context,
             ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
@@ -3787,4 +4502,4 @@ class _HomeModule {
   final IconData screenIcon;
 }
 
-enum _HomeModuleKind { calendar, drive, placeholder }
+enum _HomeModuleKind { calendar, drive, university, placeholder }
