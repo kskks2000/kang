@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from .academy_info_service import load_academy_info_basic
 from .auth_service import create_or_update_session, find_login_id
 from .calendar_service import load_calendar_events
 from .db import get_db
@@ -14,6 +15,7 @@ from .drive_service import (
 )
 from .firebase_auth import verify_firebase_id_token
 from .schemas import (
+    AcademyInfoBasicResponse,
     CalendarEventsRequest,
     CalendarEventsResponse,
     DriveFilesRequest,
@@ -51,6 +53,11 @@ def _client_ip(request: Request) -> str | None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/academy-info/basic", response_model=AcademyInfoBasicResponse)
+def academy_info_basic() -> dict:
+    return load_academy_info_basic()
 
 
 @app.post("/auth/session", response_model=SessionResponse)

@@ -128,3 +128,50 @@ class GoogleDriveRow(BaseModel):
 
 class DriveRowsResponse(BaseModel):
     rows: list[GoogleDriveRow]
+
+
+class AcademyInfoSource(BaseModel):
+    title: str
+    provider: str
+    sourceUrl: str
+    serviceBaseUrl: str
+    format: str
+
+
+class AcademyInfoSummary(BaseModel):
+    operationCount: int
+    successCount: int
+    errorCount: int
+    totalRows: int
+    latestComparisonYear: Optional[str] = None
+    latestNoticeYear: Optional[str] = None
+
+
+class AcademyInfoOperationResult(BaseModel):
+    group: str
+    title: str
+    endpoint: str
+    description: str
+    requiredParams: list[str]
+    optionalParams: list[str]
+    responseFields: list[str]
+    serviceUrl: str
+    status: str
+    resultCode: str
+    resultMsg: str
+    totalCount: Optional[int] = None
+    rowCount: int
+    hasMore: bool
+    requestParams: dict[str, str]
+    rows: list[dict[str, str]]
+    fields: list[str]
+
+
+class AcademyInfoBasicResponse(BaseModel):
+    status: str
+    fetchedAt: str
+    cached: bool
+    cacheSeconds: int
+    source: AcademyInfoSource
+    summary: AcademyInfoSummary
+    operations: list[AcademyInfoOperationResult]

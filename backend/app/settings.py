@@ -52,6 +52,7 @@ class Settings:
     database_url: str
     firebase_project_id: str
     cors_allowed_origins: list[str]
+    academyinfo_service_key: str
 
 
 def load_settings() -> Settings:
@@ -92,6 +93,7 @@ def load_settings() -> Settings:
         database_url=database_url,
         firebase_project_id=firebase_project_id,
         cors_allowed_origins=_csv(cors_origins),
+        academyinfo_service_key=os.getenv("ACADEMYINFO_SERVICE_KEY", "").strip(),
     )
 
 
