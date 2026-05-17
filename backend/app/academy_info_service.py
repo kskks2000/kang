@@ -235,8 +235,10 @@ def _build_dataset(now: datetime) -> dict[str, Any]:
     preloaded["getComparisonPubYear"] = comparison_years
     preloaded["getNoticeSvyYear"] = notice_years
 
-    latest_comparison_year = _latest_year(comparison_years["rows"])
-    latest_notice_year = _latest_year(notice_years["rows"])
+    comparison_years_available = _year_values(comparison_years["rows"])
+    notice_years_available = _year_values(notice_years["rows"])
+    latest_comparison_year = comparison_years_available[0] if comparison_years_available else None
+    latest_notice_year = notice_years_available[0] if notice_years_available else None
 
     operations: list[dict[str, Any]] = []
     for operation in OPERATION_DEFS:
@@ -244,18 +246,27 @@ def _build_dataset(now: datetime) -> dict[str, Any]:
         if endpoint in preloaded:
             result = preloaded[endpoint]
         else:
-            params: dict[str, str] = {}
             year_source = operation.get("yearSource")
             if year_source == "comparison":
-                params["svyYr"] = latest_comparison_year or operation.get("fallbackYear", "2018")
+                result = _fetch_year_operation(
+                    operation,
+                    service_key=service_key,
+                    years=comparison_years_available,
+                    fallback_year=operation.get("fallbackYear", "2018"),
+                )
             elif year_source == "notice":
-                params["svyYr"] = latest_notice_year or operation.get("fallbackYear", "2019")
-
-            result = _fetch_operation(
-                operation,
-                service_key=service_key,
-                extra_params=params,
-            )
+                result = _fetch_year_operation(
+                    operation,
+                    service_key=service_key,
+                    years=notice_years_available,
+                    fallback_year=operation.get("fallbackYear", "2019"),
+                )
+            else:
+                result = _fetch_operation(
+                    operation,
+                    service_key=service_key,
+                    extra_params={},
+                )
         operations.append(result)
 
     return _dataset_response(
@@ -468,14 +479,45 @@ def _operation_metadata(operation: dict[str, Any]) -> dict[str, Any]:
 
 
 def _latest_year(rows: list[dict[str, str]]) -> str | None:
+    years = _year_values(rows)
+    if not years:
+        return None
+    return years[0]
+
+
+def _year_values(rows: list[dict[str, str]]) -> list[str]:
     years = [
         row.get("yearVal", "")
         for row in rows
         if row.get("yearVal", "").isdigit()
     ]
-    if not years:
-        return None
-    return max(years)
+    return sorted(set(years), reverse=True)
+
+
+def _fetch_year_operation(
+    operation: dict[str, Any],
+    *,
+    service_key: str,
+    years: list[str],
+    fallback_year: str,
+) -> dict[str, Any]:
+    candidates = years or [fallback_year]
+    first_result: dict[str, Any] | None = None
+    for year in candidates:
+        result = _fetch_operation(
+            operation,
+            service_key=service_key,
+            extra_params={"svyYr": year},
+        )
+        if result["status"] == "ok" and result["rowCount"] > 0:
+            return result
+        if first_result is None:
+            first_result = result
+    return first_result or _fetch_operation(
+        operation,
+        service_key=service_key,
+        extra_params={"svyYr": fallback_year},
+    )
 
 
 def _ordered_fields(

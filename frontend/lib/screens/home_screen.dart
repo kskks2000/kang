@@ -898,6 +898,7 @@ class _UniversityFeaturePanelState extends State<_UniversityFeaturePanel> {
   final TextEditingController _academyInfoSearchController =
       TextEditingController();
   late Future<AcademyInfoBasicDataset> _academyInfoFuture;
+  final Map<String, int> _academyInfoDetailVisibleCounts = {};
 
   _UniversityDataView _activeDataView = _UniversityDataView.directory;
   String _activeCategory = '전체';
@@ -949,6 +950,7 @@ class _UniversityFeaturePanelState extends State<_UniversityFeaturePanel> {
   void _refreshAcademyInfo() {
     setState(() {
       _academyInfoFuture = _academyInfoApi.loadBasicInformation();
+      _academyInfoDetailVisibleCounts.clear();
     });
   }
 
@@ -1266,11 +1268,60 @@ class _UniversityFeaturePanelState extends State<_UniversityFeaturePanel> {
           color: KangColors.slate,
         )
       else
-        for (final operation in visibleOperations)
-          _AcademyInfoOperationTile(
-            operation: operation,
-            color: widget.module.accent,
-          ),
+        FutureBuilder<AcademyInfoBasicDataset>(
+          future: _academyInfoFuture,
+          builder: (context, snapshot) {
+            final liveByEndpoint = <String, AcademyInfoOperationResult>{
+              for (final item in snapshot.data?.operations ?? const [])
+                item.endpoint: item,
+            };
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (snapshot.connectionState != ConnectionState.done) ...[
+                  const _CalendarMessage(
+                    icon: Icons.cloud_sync_outlined,
+                    text: '대학알리미 API 데이터를 불러오고 있습니다.',
+                    color: KangColors.slate,
+                  ),
+                  const SizedBox(height: 8),
+                ] else if (snapshot.hasError) ...[
+                  _AcademyInfoApiNotice(
+                    color: Colors.red.shade600,
+                    icon: Icons.error_outline_rounded,
+                    title: '대학알리미 API 데이터를 불러오지 못했습니다.',
+                    message: snapshot.error?.toString() ?? '알 수 없는 오류가 발생했습니다.',
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                for (final operation in visibleOperations)
+                  _AcademyInfoOperationTile(
+                    operation: operation,
+                    result: liveByEndpoint[operation.endpoint],
+                    visibleCount:
+                        _academyInfoDetailVisibleCounts[operation.endpoint] ??
+                        _academyInfoInitialVisibleCount(
+                          liveByEndpoint[operation.endpoint],
+                        ),
+                    color: widget.module.accent,
+                    onShowMore: liveByEndpoint[operation.endpoint] == null
+                        ? null
+                        : () {
+                            final result = liveByEndpoint[operation.endpoint]!;
+                            setState(() {
+                              _academyInfoDetailVisibleCounts[operation
+                                      .endpoint] =
+                                  (_academyInfoDetailVisibleCounts[operation
+                                          .endpoint] ??
+                                      _academyInfoInitialVisibleCount(result)) +
+                                  20;
+                            });
+                          },
+                  ),
+              ],
+            );
+          },
+        ),
     ];
   }
 
@@ -1371,6 +1422,13 @@ class _UniversityFeaturePanelState extends State<_UniversityFeaturePanel> {
 }
 
 enum _UniversityDataView { directory, academyInfo, kessStats }
+
+int _academyInfoInitialVisibleCount(AcademyInfoOperationResult? operation) {
+  if (operation?.isUniversityList ?? false) {
+    return 10;
+  }
+  return 18;
+}
 
 class _AcademyInfoLiveDataPanel extends StatefulWidget {
   const _AcademyInfoLiveDataPanel({
@@ -1525,10 +1583,7 @@ class _AcademyInfoLiveDataPanelState extends State<_AcademyInfoLiveDataPanel> {
   }
 
   int _initialVisibleCount(AcademyInfoOperationResult operation) {
-    if (operation.isUniversityList) {
-      return 10;
-    }
-    return 18;
+    return _academyInfoInitialVisibleCount(operation);
   }
 }
 
@@ -2104,13 +2159,34 @@ class _AcademyInfoOperationTile extends StatelessWidget {
   const _AcademyInfoOperationTile({
     required this.operation,
     required this.color,
+    this.result,
+    this.visibleCount = 0,
+    this.onShowMore,
   });
 
   final AcademyInfoBasicOperation operation;
+  final AcademyInfoOperationResult? result;
+  final int visibleCount;
   final Color color;
+  final VoidCallback? onShowMore;
 
   @override
   Widget build(BuildContext context) {
+    final liveResult = result;
+    final statusColor = liveResult == null
+        ? color
+        : liveResult.isOk
+        ? color
+        : Colors.red.shade600;
+    final rows = liveResult == null
+        ? const <Map<String, String>>[]
+        : liveResult.rows.take(visibleCount).toList(growable: false);
+    final total = liveResult == null
+        ? 0
+        : liveResult.totalCount == 0
+        ? liveResult.rowCount
+        : liveResult.totalCount;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -2129,10 +2205,18 @@ class _AcademyInfoOperationTile extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(Icons.api_outlined, color: color, size: 20),
+                child: Icon(
+                  liveResult == null
+                      ? Icons.api_outlined
+                      : liveResult.isOk
+                      ? Icons.cloud_done_outlined
+                      : Icons.error_outline_rounded,
+                  color: statusColor,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -2194,6 +2278,73 @@ class _AcademyInfoOperationTile extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          if (liveResult == null)
+            const _CalendarMessage(
+              icon: Icons.cloud_sync_outlined,
+              text: '이 API의 호출 데이터를 불러오고 있습니다.',
+              color: KangColors.slate,
+            )
+          else ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _UniversityMetric(
+                  label: '결과',
+                  value: liveResult.isOk ? '정상' : '오류',
+                ),
+                _UniversityMetric(label: '응답코드', value: liveResult.resultCode),
+                _UniversityMetric(
+                  label: '건수',
+                  value: '${_formatKessNumber(total)}개',
+                ),
+                if (liveResult.requestParams.isNotEmpty)
+                  _UniversityMetric(
+                    label: '요청값',
+                    value: liveResult.requestParams.entries
+                        .map((entry) => '${entry.key}=${entry.value}')
+                        .join(', '),
+                  ),
+              ],
+            ),
+            if (liveResult.resultMsg.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                liveResult.resultMsg,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: liveResult.isOk
+                      ? KangColors.slate
+                      : Colors.red.shade700,
+                  fontWeight: liveResult.isOk
+                      ? FontWeight.w500
+                      : FontWeight.w800,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            if (rows.isEmpty)
+              const _CalendarMessage(
+                icon: Icons.table_rows_outlined,
+                text: '표시할 응답 데이터가 없습니다.',
+                color: KangColors.slate,
+              )
+            else ...[
+              for (final row in rows)
+                _AcademyInfoDataRowTile(operation: liveResult, row: row),
+              if (visibleCount < liveResult.rows.length &&
+                  onShowMore != null) ...[
+                const SizedBox(height: 4),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.expand_more_rounded),
+                  label: Text(
+                    '더 보기 (${liveResult.rows.length - visibleCount}개 남음)',
+                  ),
+                  onPressed: onShowMore,
+                ),
+              ],
+            ],
+          ],
         ],
       ),
     );
