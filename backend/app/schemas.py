@@ -175,3 +175,115 @@ class AcademyInfoBasicResponse(BaseModel):
     source: AcademyInfoSource
     summary: AcademyInfoSummary
     operations: list[AcademyInfoOperationResult]
+
+
+class MarketCapSource(BaseModel):
+    title: str
+    provider: str
+    sourceUrl: str
+    description: str
+
+
+class MarketCapSummary(BaseModel):
+    requestedLimit: int
+    count: int
+    topCompany: Optional[str] = None
+    topSymbol: Optional[str] = None
+    topMarketCap: Optional[int] = None
+    lastUpdated: Optional[str] = None
+
+
+class MarketCapCompany(BaseModel):
+    rank: int
+    symbol: str
+    name: str
+    country: str
+    countryCode: str
+    sector: str
+    industry: str
+    marketCap: int
+    price: Optional[float] = None
+    dailyChangePercent: Optional[float] = None
+    peRatio: Optional[float] = None
+    revenue: int
+    earnings: int
+    lastUpdated: str
+
+
+class MarketCapTopResponse(BaseModel):
+    status: str
+    fetchedAt: str
+    cached: bool
+    cacheSeconds: int
+    source: MarketCapSource
+    summary: MarketCapSummary
+    companies: list[MarketCapCompany]
+
+
+class FinancialSource(BaseModel):
+    name: str
+    url: str
+    description: str
+
+
+class FinancialSummary(BaseModel):
+    treasuryDate: Optional[str] = None
+    exchangeRateDate: Optional[str] = None
+    treasuryCount: int
+    exchangeRateCount: int
+    futureCount: int
+    errorCount: int
+
+
+class TreasuryRate(BaseModel):
+    maturity: str
+    label: str
+    rate: Optional[float] = None
+    previousRate: Optional[float] = None
+    change: Optional[float] = None
+    date: str
+
+
+class TreasurySpread(BaseModel):
+    code: str
+    label: str
+    value: Optional[float] = None
+    date: str
+
+
+class ExchangeRate(BaseModel):
+    pair: str
+    label: str
+    base: str
+    quote: str
+    rate: float
+    usdBaseRate: float
+    date: str
+
+
+class MarketFuture(BaseModel):
+    symbol: str
+    name: str
+    displayName: str
+    group: str
+    price: Optional[float] = None
+    change: Optional[float] = None
+    changePercent: Optional[float] = None
+    previousClose: Optional[float] = None
+    currency: str
+    marketTime: str
+    exchange: str
+
+
+class FinancialMarketsResponse(BaseModel):
+    status: str
+    fetchedAt: str
+    cached: bool
+    cacheSeconds: int
+    sources: list[FinancialSource]
+    summary: FinancialSummary
+    treasuryRates: list[TreasuryRate]
+    treasurySpreads: list[TreasurySpread]
+    exchangeRates: list[ExchangeRate]
+    futures: list[MarketFuture]
+    errors: list[str]

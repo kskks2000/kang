@@ -13,7 +13,9 @@ from .drive_service import (
     list_google_sheet_files,
     user_id_from_claims,
 )
+from .financial_market_service import load_financial_markets
 from .firebase_auth import verify_firebase_id_token
+from .market_cap_service import load_global_market_cap_top
 from .schemas import (
     AcademyInfoBasicResponse,
     CalendarEventsRequest,
@@ -24,8 +26,10 @@ from .schemas import (
     DriveImportResponse,
     DriveRowsRequest,
     DriveRowsResponse,
+    FinancialMarketsResponse,
     FindLoginIdRequest,
     FindLoginIdResponse,
+    MarketCapTopResponse,
     SessionRequest,
     SessionResponse,
 )
@@ -58,6 +62,16 @@ def health() -> dict[str, str]:
 @app.get("/academy-info/basic", response_model=AcademyInfoBasicResponse)
 def academy_info_basic() -> dict:
     return load_academy_info_basic()
+
+
+@app.get("/market-cap/global-top", response_model=MarketCapTopResponse)
+def market_cap_global_top() -> dict:
+    return load_global_market_cap_top(limit=100)
+
+
+@app.get("/financial/markets", response_model=FinancialMarketsResponse)
+def financial_markets() -> dict:
+    return load_financial_markets()
 
 
 @app.post("/auth/session", response_model=SessionResponse)

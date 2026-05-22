@@ -9,8 +9,10 @@ import '../data/kess_university_major_stats.dart';
 import '../models/app_user.dart';
 import '../services/academy_info_api.dart';
 import '../services/firebase_social_auth.dart';
+import '../services/financial_market_api.dart';
 import '../services/google_calendar_service.dart';
 import '../services/google_drive_api.dart';
+import '../services/stock_market_api.dart';
 import '../theme/kang_theme.dart';
 import '../widgets/kang_mark.dart';
 
@@ -147,26 +149,28 @@ class _HomeScreenState extends State<HomeScreen> {
         screenIcon: Icons.school_outlined,
       ),
       _HomeModule(
-        title: '이메일',
-        subtitle: '메시지 관리',
-        status: '예정',
-        icon: Icons.alternate_email_rounded,
-        accent: Color(0xFFB15C2E),
-        surface: Color(0xFFFFF3EA),
-        screenTitle: '이메일',
-        screenSubtitle: '메일 연동 예정',
-        screenIcon: Icons.alternate_email_rounded,
+        title: '세계 시총',
+        subtitle: '주식 TOP 100',
+        status: '실시간',
+        icon: Icons.trending_up_rounded,
+        accent: Color(0xFF0F766E),
+        surface: Color(0xFFE8FAF6),
+        kind: _HomeModuleKind.marketCap,
+        screenTitle: '세계 시총 TOP 100',
+        screenSubtitle: '글로벌 상장사 시가총액 순위',
+        screenIcon: Icons.trending_up_rounded,
       ),
       _HomeModule(
-        title: '기록',
-        subtitle: '개인 데이터',
-        status: '예정',
-        icon: Icons.article_outlined,
-        accent: Color(0xFF44626F),
-        surface: Color(0xFFEFF8FA),
-        screenTitle: '기록',
-        screenSubtitle: '개인 기록 공간 준비',
-        screenIcon: Icons.article_outlined,
+        title: '금융정보',
+        subtitle: '금리·환율·선물',
+        status: '실시간',
+        icon: Icons.query_stats_rounded,
+        accent: Color(0xFF334155),
+        surface: Color(0xFFEFF6FF),
+        kind: _HomeModuleKind.financial,
+        screenTitle: '금융정보',
+        screenSubtitle: '미국채 금리, 주요 환율, 미국 선물',
+        screenIcon: Icons.query_stats_rounded,
       ),
       _HomeModule(
         title: '설정',
@@ -828,6 +832,12 @@ class _FeaturePanel extends StatelessWidget {
     if (module.kind == _HomeModuleKind.university) {
       return _UniversityFeaturePanel(module: module);
     }
+    if (module.kind == _HomeModuleKind.marketCap) {
+      return _MarketCapFeaturePanel(module: module);
+    }
+    if (module.kind == _HomeModuleKind.financial) {
+      return _FinancialInfoFeaturePanel(module: module);
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -875,6 +885,922 @@ class _FeaturePanel extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MarketCapFeaturePanel extends StatefulWidget {
+  const _MarketCapFeaturePanel({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  State<_MarketCapFeaturePanel> createState() => _MarketCapFeaturePanelState();
+}
+
+class _MarketCapFeaturePanelState extends State<_MarketCapFeaturePanel> {
+  final StockMarketApi _stockMarketApi = StockMarketApi();
+  final TextEditingController _searchController = TextEditingController();
+  late Future<MarketCapTopDataset> _future;
+
+  String _activeSector = '전체';
+  int _visibleCount = 30;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _stockMarketApi.loadGlobalTop();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = _stockMarketApi.loadGlobalTop();
+      _visibleCount = 30;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: FutureBuilder<MarketCapTopDataset>(
+          future: _future,
+          builder: (context, snapshot) {
+            final loading = snapshot.connectionState != ConnectionState.done;
+            final dataset = snapshot.data;
+            final companies = dataset?.companies ?? const <MarketCapCompany>[];
+            final sectors =
+                [
+                  '전체',
+                  ...{
+                    for (final company in companies)
+                      if (company.sector.isNotEmpty) company.sector,
+                  },
+                ]..sort((a, b) {
+                  if (a == '전체') {
+                    return -1;
+                  }
+                  if (b == '전체') {
+                    return 1;
+                  }
+                  return a.compareTo(b);
+                });
+            final activeSector = sectors.contains(_activeSector)
+                ? _activeSector
+                : '전체';
+            final query = _searchController.text;
+            final filtered = companies
+                .where((company) => company.matches(query))
+                .where(
+                  (company) =>
+                      activeSector == '전체' || company.sector == activeSector,
+                )
+                .toList(growable: false);
+            final visible = filtered
+                .take(_visibleCount)
+                .toList(growable: false);
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.trending_up_rounded,
+                      color: widget.module.accent,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '세계 시가총액 순위',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    _StatusPill(
+                      text: loading ? '조회 중' : '${companies.length}개',
+                      color: widget.module.accent,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (loading)
+                  const _CalendarMessage(
+                    icon: Icons.cloud_sync_outlined,
+                    text: '세계 시총 TOP 100 데이터를 불러오고 있습니다.',
+                    color: KangColors.slate,
+                  )
+                else if (snapshot.hasError || dataset == null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _CalendarMessage(
+                        icon: Icons.error_outline_rounded,
+                        text:
+                            snapshot.error?.toString() ??
+                            '세계 시총 데이터를 불러오지 못했습니다.',
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('다시 조회'),
+                          onPressed: _refresh,
+                        ),
+                      ),
+                    ],
+                  )
+                else ...[
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _UniversitySummaryTile(
+                        icon: Icons.format_list_numbered_rounded,
+                        label: '리스트',
+                        value: '${dataset.summary.count}개',
+                        color: widget.module.accent,
+                      ),
+                      _UniversitySummaryTile(
+                        icon: Icons.emoji_events_outlined,
+                        label: '1위',
+                        value: dataset.summary.topSymbol,
+                        color: KangColors.royalPurple,
+                      ),
+                      _UniversitySummaryTile(
+                        icon: Icons.paid_outlined,
+                        label: '1위 시총',
+                        value: _formatUsdCompact(dataset.summary.topMarketCap),
+                        color: KangColors.mintDeep,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _UniversitySourceNote(
+                    color: widget.module.accent,
+                    title:
+                        '${dataset.source.provider} · ${dataset.source.title}',
+                    description:
+                        '글로벌 상장사를 시가총액 기준으로 정렬한 정보성 데이터입니다. '
+                        '마지막 원본 갱신: ${_formatMarketCapDate(dataset.summary.lastUpdated)}',
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (_) => setState(() => _visibleCount = 30),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.manage_search_rounded),
+                      labelText: '종목 검색',
+                      hintText: '회사명, 티커, 국가, 섹터, 산업',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final sector in sectors)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(sector),
+                              selected: activeSector == sector,
+                              onSelected: (_) {
+                                setState(() {
+                                  _activeSector = sector;
+                                  _visibleCount = 30;
+                                });
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _DriveRowsHeader(
+                    count: filtered.length,
+                    loading: false,
+                    color: widget.module.accent,
+                    title: '세계 시총 TOP 100',
+                  ),
+                  const SizedBox(height: 8),
+                  if (filtered.isEmpty)
+                    const _CalendarMessage(
+                      icon: Icons.search_off_rounded,
+                      text: '조건에 맞는 종목이 없습니다.',
+                      color: KangColors.slate,
+                    )
+                  else ...[
+                    for (final company in visible)
+                      _MarketCapCompanyTile(
+                        company: company,
+                        color: widget.module.accent,
+                      ),
+                    if (_visibleCount < filtered.length) ...[
+                      const SizedBox(height: 4),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.expand_more_rounded),
+                        label: Text(
+                          '더 보기 (${filtered.length - _visibleCount}개 남음)',
+                        ),
+                        onPressed: () {
+                          setState(() => _visibleCount += 25);
+                        },
+                      ),
+                    ],
+                  ],
+                ],
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _MarketCapCompanyTile extends StatelessWidget {
+  const _MarketCapCompanyTile({required this.company, required this.color});
+
+  final MarketCapCompany company;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final change = company.dailyChangePercent;
+    final changeColor = change == null
+        ? KangColors.slate
+        : change >= 0
+        ? KangColors.mintDeep
+        : Colors.red.shade600;
+    final details = [
+      company.country,
+      company.sector,
+      company.industry,
+    ].where((value) => value.isNotEmpty).join(' · ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '#${company.rank}',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      company.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                      ),
+                    ),
+                    if (details.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        details,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: KangColors.slate,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _StatusPill(text: company.symbol, color: color),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MarketCapMetric(
+                label: '시가총액',
+                value: _formatUsdCompact(company.marketCap),
+              ),
+              _MarketCapMetric(
+                label: '주가',
+                value: _formatUsdPrice(company.price),
+              ),
+              _MarketCapMetric(
+                label: '일일변동',
+                value: _formatSignedPercent(change),
+                valueColor: changeColor,
+              ),
+              _MarketCapMetric(
+                label: 'P/E',
+                value: company.peRatio == null
+                    ? '-'
+                    : _trimDecimal(company.peRatio!, digits: 2),
+              ),
+              _MarketCapMetric(
+                label: '매출',
+                value: _formatUsdCompact(company.revenue),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MarketCapMetric extends StatelessWidget {
+  const _MarketCapMetric({
+    required this.label,
+    required this.value,
+    this.valueColor = KangColors.ink,
+  });
+
+  final String label;
+  final String value;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 104),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFD),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: valueColor, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinancialInfoFeaturePanel extends StatefulWidget {
+  const _FinancialInfoFeaturePanel({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  State<_FinancialInfoFeaturePanel> createState() =>
+      _FinancialInfoFeaturePanelState();
+}
+
+class _FinancialInfoFeaturePanelState
+    extends State<_FinancialInfoFeaturePanel> {
+  final FinancialMarketApi _financialMarketApi = FinancialMarketApi();
+  late Future<FinancialMarketsDataset> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _financialMarketApi.loadMarkets();
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = _financialMarketApi.loadMarkets();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: FutureBuilder<FinancialMarketsDataset>(
+          future: _future,
+          builder: (context, snapshot) {
+            final loading = snapshot.connectionState != ConnectionState.done;
+            final dataset = snapshot.data;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.query_stats_rounded,
+                      color: widget.module.accent,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '금융정보 대시보드',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton.outlined(
+                      tooltip: '금융정보 새로고침',
+                      icon: const Icon(Icons.refresh_rounded),
+                      color: widget.module.accent,
+                      onPressed: loading ? null : _refresh,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (loading)
+                  const _CalendarMessage(
+                    icon: Icons.cloud_sync_outlined,
+                    text: '금리, 환율, 선물 데이터를 불러오고 있습니다.',
+                    color: KangColors.slate,
+                  )
+                else if (snapshot.hasError || dataset == null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _CalendarMessage(
+                        icon: Icons.error_outline_rounded,
+                        text:
+                            snapshot.error?.toString() ??
+                            '금융정보 데이터를 불러오지 못했습니다.',
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('다시 조회'),
+                          onPressed: _refresh,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  _FinancialDashboard(
+                    dataset: dataset,
+                    color: widget.module.accent,
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _FinancialDashboard extends StatelessWidget {
+  const _FinancialDashboard({required this.dataset, required this.color});
+
+  final FinancialMarketsDataset dataset;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tenYear = dataset.treasuryRate('10Y');
+    final tenTwoSpread = dataset.treasurySpread('10Y-2Y');
+    final usdKrw = dataset.exchangeRate('USD/KRW');
+    final nasdaqFuture = dataset.futureQuote('NQ=F');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _UniversitySummaryTile(
+              icon: Icons.account_balance_outlined,
+              label: '미 10년물',
+              value: _formatRatePercent(tenYear?.rate),
+              color: color,
+            ),
+            _UniversitySummaryTile(
+              icon: Icons.timeline_rounded,
+              label: '10Y-2Y',
+              value: _formatSpreadPercent(tenTwoSpread?.value),
+              color: KangColors.royalPurple,
+            ),
+            _UniversitySummaryTile(
+              icon: Icons.currency_exchange_rounded,
+              label: 'USD/KRW',
+              value: _formatFxRate(usdKrw?.rate),
+              color: KangColors.mintDeep,
+            ),
+            _UniversitySummaryTile(
+              icon: Icons.show_chart_rounded,
+              label: 'Nasdaq 선물',
+              value: _formatSignedPercent(nasdaqFuture?.changePercent),
+              color: (nasdaqFuture?.changePercent ?? 0) >= 0
+                  ? KangColors.mintDeep
+                  : Colors.red.shade600,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _UniversitySourceNote(
+          color: color,
+          title: 'U.S. Treasury · Frankfurter/ECB · Yahoo Finance Chart Data',
+          description:
+              '미국채 수익률 곡선, 주요 통화 환율, 미국 지수선물과 매크로 지표를 한 화면에서 확인합니다. '
+              '국채/환율 기준일: ${dataset.summary.treasuryDate} / ${dataset.summary.exchangeRateDate}',
+        ),
+        if (dataset.hasErrors) ...[
+          const SizedBox(height: 12),
+          _CalendarMessage(
+            icon: Icons.warning_amber_rounded,
+            text: '일부 데이터 소스 오류: ${dataset.errors.join(' · ')}',
+            color: Colors.orange.shade700,
+          ),
+        ],
+        const SizedBox(height: 16),
+        _DriveRowsHeader(
+          count: dataset.treasuryRates.length,
+          loading: false,
+          color: color,
+          title: '미국채 수익률 곡선',
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final rate in dataset.treasuryRates)
+              _TreasuryRateTile(rate: rate, color: color),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final spread in dataset.treasurySpreads)
+              _SpreadChip(spread: spread, color: color),
+          ],
+        ),
+        const SizedBox(height: 18),
+        _DriveRowsHeader(
+          count: dataset.exchangeRates.length,
+          loading: false,
+          color: color,
+          title: '주요 환율',
+        ),
+        const SizedBox(height: 8),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 760;
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: dataset.exchangeRates.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: compact ? 2 : 4,
+                mainAxisExtent: 112,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemBuilder: (context, index) {
+                return _ExchangeRateTile(
+                  rate: dataset.exchangeRates[index],
+                  color: color,
+                );
+              },
+            );
+          },
+        ),
+        const SizedBox(height: 18),
+        _DriveRowsHeader(
+          count: dataset.futures.length,
+          loading: false,
+          color: color,
+          title: '미국 선물·매크로 지표',
+        ),
+        const SizedBox(height: 8),
+        for (final quote in dataset.futures)
+          _FinancialFutureTile(quote: quote, color: color),
+      ],
+    );
+  }
+}
+
+class _TreasuryRateTile extends StatelessWidget {
+  const _TreasuryRateTile({required this.rate, required this.color});
+
+  final TreasuryRate rate;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final changeColor = (rate.change ?? 0) >= 0
+        ? KangColors.mintDeep
+        : Colors.red.shade600;
+
+    return Container(
+      width: 118,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  rate.maturity,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Icon(Icons.account_balance_outlined, color: color, size: 16),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatRatePercent(rate.rate),
+            style: const TextStyle(
+              color: KangColors.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _formatBasisPointChange(rate.change),
+            style: TextStyle(
+              color: changeColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpreadChip extends StatelessWidget {
+  const _SpreadChip({required this.spread, required this.color});
+
+  final TreasurySpread spread;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = spread.value;
+    final valueColor = (value ?? 0) >= 0 ? color : Colors.red.shade600;
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 150),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            spread.code,
+            style: const TextStyle(
+              color: KangColors.ink,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _formatSpreadPercent(value),
+            style: TextStyle(color: valueColor, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExchangeRateTile extends StatelessWidget {
+  const _ExchangeRateTile({required this.rate, required this.color});
+
+  final ExchangeRate rate;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  rate.pair,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w900),
+                ),
+              ),
+              const Icon(
+                Icons.currency_exchange_rounded,
+                size: 16,
+                color: KangColors.slate,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatFxRate(rate.rate),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: KangColors.ink,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            rate.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinancialFutureTile extends StatelessWidget {
+  const _FinancialFutureTile({required this.quote, required this.color});
+
+  final MarketFutureQuote quote;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final changeColor = (quote.changePercent ?? 0) >= 0
+        ? KangColors.mintDeep
+        : Colors.red.shade600;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.show_chart_rounded, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      quote.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        quote.symbol,
+                        quote.exchange,
+                        _formatMarketCapDate(quote.marketTime),
+                      ].where((value) => value.isNotEmpty).join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _StatusPill(text: quote.group, color: color),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MarketCapMetric(
+                label: '가격',
+                value: _formatMarketQuotePrice(quote.price),
+              ),
+              _MarketCapMetric(
+                label: '변동',
+                value: _formatSignedNumber(quote.change),
+                valueColor: changeColor,
+              ),
+              _MarketCapMetric(
+                label: '변동률',
+                value: _formatSignedPercent(quote.changePercent),
+                valueColor: changeColor,
+              ),
+              _MarketCapMetric(
+                label: '전일종가',
+                value: _formatMarketQuotePrice(quote.previousClose),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -2776,6 +3702,115 @@ String _formatKessNumber(int value) {
     }
   }
   return buffer.toString();
+}
+
+String _formatUsdCompact(int value) {
+  final absolute = value.abs();
+  if (absolute >= 1000000000000) {
+    return '\$${_trimDecimal(value / 1000000000000, digits: 2)}T';
+  }
+  if (absolute >= 1000000000) {
+    return '\$${_trimDecimal(value / 1000000000, digits: 2)}B';
+  }
+  if (absolute >= 1000000) {
+    return '\$${_trimDecimal(value / 1000000, digits: 2)}M';
+  }
+  return '\$${_formatKessNumber(value)}';
+}
+
+String _formatUsdPrice(double? value) {
+  if (value == null) {
+    return '-';
+  }
+  return '\$${_trimDecimal(value, digits: 2)}';
+}
+
+String _formatRatePercent(double? value) {
+  if (value == null) {
+    return '-';
+  }
+  return '${_trimDecimal(value, digits: 2)}%';
+}
+
+String _formatSpreadPercent(double? value) {
+  if (value == null) {
+    return '-';
+  }
+  return '${_trimDecimal(value, digits: 2)}%p';
+}
+
+String _formatBasisPointChange(double? value) {
+  if (value == null) {
+    return '-';
+  }
+  final basisPoints = value * 100;
+  final sign = basisPoints > 0 ? '+' : '';
+  return '$sign${_trimDecimal(basisPoints, digits: 1)}bp';
+}
+
+String _formatFxRate(double? value) {
+  if (value == null || value == 0) {
+    return '-';
+  }
+  final digits = value >= 100
+      ? 2
+      : value >= 10
+      ? 3
+      : 4;
+  return _trimDecimal(value, digits: digits);
+}
+
+String _formatMarketQuotePrice(double? value) {
+  if (value == null) {
+    return '-';
+  }
+  return _trimDecimal(value, digits: value >= 1000 ? 2 : 3);
+}
+
+String _formatSignedNumber(double? value) {
+  if (value == null) {
+    return '-';
+  }
+  final sign = value > 0 ? '+' : '';
+  return '$sign${_trimDecimal(value, digits: 2)}';
+}
+
+String _formatSignedPercent(double? value) {
+  if (value == null) {
+    return '-';
+  }
+  final sign = value > 0 ? '+' : '';
+  return '$sign${_trimDecimal(value, digits: 2)}%';
+}
+
+String _trimDecimal(num value, {int digits = 2}) {
+  var text = value.toStringAsFixed(digits);
+  if (!text.contains('.')) {
+    return text;
+  }
+  while (text.endsWith('0')) {
+    text = text.substring(0, text.length - 1);
+  }
+  if (text.endsWith('.')) {
+    text = text.substring(0, text.length - 1);
+  }
+  return text;
+}
+
+String _formatMarketCapDate(String value) {
+  if (value.isEmpty) {
+    return '-';
+  }
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) {
+    return value;
+  }
+  final local = parsed.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day $hour:$minute';
 }
 
 String _academyInfoFieldLabel(String field) {
@@ -5719,4 +6754,11 @@ class _HomeModule {
   final IconData screenIcon;
 }
 
-enum _HomeModuleKind { calendar, drive, university, placeholder }
+enum _HomeModuleKind {
+  calendar,
+  drive,
+  university,
+  marketCap,
+  financial,
+  placeholder,
+}
