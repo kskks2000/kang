@@ -22,7 +22,21 @@ class FinancialMarketApi {
       );
     }
 
-    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    final contentType = response.headers['content-type'] ?? '';
+    if (!contentType.toLowerCase().contains('application/json')) {
+      throw const FinancialMarketApiException(
+        '금융정보 API가 JSON 응답을 반환하지 않았습니다. 잠시 후 다시 시도해 주세요.',
+      );
+    }
+
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    } on FormatException {
+      throw const FinancialMarketApiException(
+        '금융정보 API 응답을 해석하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      );
+    }
     if (decoded is! Map<String, dynamic>) {
       throw const FinancialMarketApiException('금융정보 API 응답 형식이 올바르지 않습니다.');
     }

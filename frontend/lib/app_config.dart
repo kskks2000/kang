@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 class AppConfig {
   static const _apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static const _productionApiBaseUrl = 'https://kang.ai.kr';
 
   static String get apiBaseUrl {
     if (_apiBaseUrl.trim().isNotEmpty) {
@@ -13,14 +14,14 @@ class AppConfig {
       if (host == 'localhost' || host == '127.0.0.1') {
         return 'http://localhost:8000';
       }
-      return Uri.base.origin;
+      return _productionApiBaseUrl;
     }
 
     return switch (defaultTargetPlatform) {
       TargetPlatform.android =>
-        kReleaseMode ? 'https://kang-84cdd.web.app' : 'http://10.0.2.2:8000',
+        kReleaseMode ? _productionApiBaseUrl : 'http://10.0.2.2:8000',
       TargetPlatform.iOS || TargetPlatform.macOS =>
-        kReleaseMode ? 'https://kang-84cdd.web.app' : 'http://localhost:8000',
+        kReleaseMode ? _productionApiBaseUrl : 'http://localhost:8000',
       TargetPlatform.windows ||
       TargetPlatform.linux ||
       TargetPlatform.fuchsia => 'http://localhost:8000',

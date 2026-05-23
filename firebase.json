@@ -28,6 +28,23 @@
         ]
       }
     ],
+    "redirects": [
+      {
+        "source": "/academy-info/:path*",
+        "destination": "https://kang.ai.kr/academy-info/:path",
+        "type": 302
+      },
+      {
+        "source": "/financial/:path*",
+        "destination": "https://kang.ai.kr/financial/:path",
+        "type": 302
+      },
+      {
+        "source": "/market-cap/:path*",
+        "destination": "https://kang.ai.kr/market-cap/:path",
+        "type": 302
+      }
+    ],
     "rewrites": [
       {
         "source": "/health",
