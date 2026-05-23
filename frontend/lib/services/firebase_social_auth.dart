@@ -24,10 +24,20 @@ class FirebaseSocialAuth {
     _driveSheetsAccessToken = null;
   }
 
-  static Future<UserCredential> signInWithGoogle() async {
-    final provider = _googleProvider();
+  static Future<UserCredential> signInWithGoogle({
+    bool includeCalendarAccess = true,
+  }) async {
+    final provider = _googleProvider(
+      scopes: includeCalendarAccess
+          ? const [calendarEventsScope, calendarListReadonlyScope]
+          : const [],
+    );
 
-    return _signInWithProvider(provider);
+    final credential = await _signInWithProvider(provider);
+    if (includeCalendarAccess) {
+      _cacheCalendarAccessToken(credential);
+    }
+    return credential;
   }
 
   static Future<String> requestGoogleCalendarAccessToken({
@@ -57,6 +67,13 @@ class FirebaseSocialAuth {
 
     _calendarAccessToken = accessToken;
     return accessToken;
+  }
+
+  static void _cacheCalendarAccessToken(UserCredential credential) {
+    final accessToken = credential.credential?.accessToken;
+    if (accessToken != null && accessToken.isNotEmpty) {
+      _calendarAccessToken = accessToken;
+    }
   }
 
   static Future<String> requestGoogleDriveSheetsAccessToken({

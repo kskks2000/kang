@@ -111,7 +111,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      final credential = await FirebaseSocialAuth.signInWithGoogle();
+      final credential = await FirebaseSocialAuth.signInWithGoogle(
+        includeCalendarAccess: false,
+      );
       final user = credential.user;
       if (user == null) {
         throw const ApiException('Google 계정을 확인할 수 없습니다.');

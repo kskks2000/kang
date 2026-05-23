@@ -588,16 +588,6 @@ class _CalendarModuleTile extends StatelessWidget {
   }
 
   Future<void> _openCalendar(BuildContext context) async {
-    try {
-      await FirebaseSocialAuth.requestGoogleCalendarAccessToken();
-    } catch (_) {
-      // The calendar screen still gives the user a clear retry action.
-    }
-
-    if (!context.mounted) {
-      return;
-    }
-
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => _FeatureScreen(module: module)));
