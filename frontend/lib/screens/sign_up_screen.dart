@@ -113,6 +113,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     try {
       final credential = await FirebaseSocialAuth.signInWithGoogle(
         includeCalendarAccess: false,
+        includeDriveSheetsAccess: false,
       );
       final user = credential.user;
       if (user == null) {

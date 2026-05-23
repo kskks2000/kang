@@ -442,18 +442,6 @@ class _ModuleTile extends StatelessWidget {
   }
 
   Future<void> _openModule(BuildContext context) async {
-    if (module.kind == _HomeModuleKind.drive) {
-      try {
-        await FirebaseSocialAuth.requestGoogleDriveSheetsAccessToken();
-      } catch (_) {
-        // The Drive screen still shows a retry action and a clear error.
-      }
-    }
-
-    if (!context.mounted) {
-      return;
-    }
-
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => _FeatureScreen(module: module)));

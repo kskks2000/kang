@@ -26,16 +26,27 @@ class FirebaseSocialAuth {
 
   static Future<UserCredential> signInWithGoogle({
     bool includeCalendarAccess = true,
+    bool includeDriveSheetsAccess = true,
   }) async {
     final provider = _googleProvider(
-      scopes: includeCalendarAccess
-          ? const [calendarEventsScope, calendarListReadonlyScope]
-          : const [],
+      scopes: [
+        if (includeCalendarAccess) ...const [
+          calendarEventsScope,
+          calendarListReadonlyScope,
+        ],
+        if (includeDriveSheetsAccess) ...const [
+          driveMetadataReadonlyScope,
+          sheetsReadonlyScope,
+        ],
+      ],
     );
 
     final credential = await _signInWithProvider(provider);
     if (includeCalendarAccess) {
       _cacheCalendarAccessToken(credential);
+    }
+    if (includeDriveSheetsAccess) {
+      _cacheDriveSheetsAccessToken(credential);
     }
     return credential;
   }
@@ -73,6 +84,13 @@ class FirebaseSocialAuth {
     final accessToken = credential.credential?.accessToken;
     if (accessToken != null && accessToken.isNotEmpty) {
       _calendarAccessToken = accessToken;
+    }
+  }
+
+  static void _cacheDriveSheetsAccessToken(UserCredential credential) {
+    final accessToken = credential.credential?.accessToken;
+    if (accessToken != null && accessToken.isNotEmpty) {
+      _driveSheetsAccessToken = accessToken;
     }
   }
 
