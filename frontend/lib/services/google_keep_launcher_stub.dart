@@ -1,1 +1,1 @@
-void openGoogleKeep() {}
+Future<bool> openGoogleKeep() async => false;

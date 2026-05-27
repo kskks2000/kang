@@ -4280,7 +4280,14 @@ class _KeepPrimaryAction extends StatelessWidget {
       return FilledButton.icon(
         icon: const Icon(Icons.open_in_new_rounded),
         label: const Text('Google Keep 열기'),
-        onPressed: openGoogleKeep,
+        onPressed: () async {
+          final opened = await openGoogleKeep();
+          if (!opened && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Google Keep을 열 수 없습니다.')),
+            );
+          }
+        },
       );
     }
 
