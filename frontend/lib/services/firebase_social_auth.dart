@@ -14,12 +14,15 @@ class FirebaseSocialAuth {
       'https://www.googleapis.com/auth/drive.metadata.readonly';
   static const sheetsReadonlyScope =
       'https://www.googleapis.com/auth/spreadsheets.readonly';
+  static String? _googleAccessToken;
   static String? _calendarAccessToken;
   static String? _driveSheetsAccessToken;
 
+  static String? get cachedGoogleAccessToken => _googleAccessToken;
   static String? get cachedCalendarAccessToken => _calendarAccessToken;
 
   static void clearCachedGoogleCalendarAccessToken() {
+    _googleAccessToken = null;
     _calendarAccessToken = null;
     _driveSheetsAccessToken = null;
   }
@@ -42,6 +45,7 @@ class FirebaseSocialAuth {
     );
 
     final credential = await _signInWithProvider(provider);
+    _cacheGoogleAccessToken(credential);
     if (includeCalendarAccess) {
       _cacheCalendarAccessToken(credential);
     }
@@ -78,6 +82,13 @@ class FirebaseSocialAuth {
 
     _calendarAccessToken = accessToken;
     return accessToken;
+  }
+
+  static void _cacheGoogleAccessToken(UserCredential credential) {
+    final accessToken = credential.credential?.accessToken;
+    if (accessToken != null && accessToken.isNotEmpty) {
+      _googleAccessToken = accessToken;
+    }
   }
 
   static void _cacheCalendarAccessToken(UserCredential credential) {

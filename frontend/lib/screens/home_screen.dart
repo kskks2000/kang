@@ -12,6 +12,8 @@ import '../services/firebase_social_auth.dart';
 import '../services/financial_market_api.dart';
 import '../services/google_calendar_service.dart';
 import '../services/google_drive_api.dart';
+import '../services/google_keep_service.dart';
+import '../services/google_keep_launcher.dart';
 import '../services/stock_market_api.dart';
 import '../theme/kang_theme.dart';
 import '../widgets/kang_mark.dart';
@@ -135,6 +137,18 @@ class _HomeScreenState extends State<HomeScreen> {
         screenTitle: '파일',
         screenSubtitle: 'Google Drive 연동 완료',
         screenIcon: Icons.folder_copy_outlined,
+      ),
+      _HomeModule(
+        title: '메모',
+        subtitle: 'Google Keep',
+        status: '연동 완료',
+        icon: Icons.sticky_note_2_outlined,
+        accent: Color(0xFFE6A700),
+        surface: Color(0xFFFFF7D8),
+        kind: _HomeModuleKind.keep,
+        screenTitle: '메모',
+        screenSubtitle: 'Google Keep 메모와 체크리스트',
+        screenIcon: Icons.sticky_note_2_outlined,
       ),
       _HomeModule(
         title: '대학 정보',
@@ -806,6 +820,9 @@ class _FeaturePanel extends StatelessWidget {
     }
     if (module.kind == _HomeModuleKind.drive) {
       return _DriveFeaturePanel(module: module);
+    }
+    if (module.kind == _HomeModuleKind.keep) {
+      return _KeepFeaturePanel(module: module);
     }
     if (module.kind == _HomeModuleKind.university) {
       return _UniversityFeaturePanel(module: module);
@@ -3791,6 +3808,18 @@ String _formatMarketCapDate(String value) {
   return '${local.year}-$month-$day $hour:$minute';
 }
 
+String _formatKeepDate(DateTime value) {
+  if (value.millisecondsSinceEpoch == 0) {
+    return '-';
+  }
+  final local = value.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}.$month.$day $hour:$minute';
+}
+
 String _academyInfoFieldLabel(String field) {
   return switch (field) {
     'cdid' => '코드',
@@ -3813,6 +3842,666 @@ String _academyInfoFieldLabel(String field) {
     'znNm' => '지역',
     _ => field,
   };
+}
+
+class _KeepFeaturePanel extends StatefulWidget {
+  const _KeepFeaturePanel({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  State<_KeepFeaturePanel> createState() => _KeepFeaturePanelState();
+}
+
+class _KeepFeaturePanelState extends State<_KeepFeaturePanel> {
+  final GoogleKeepService _keepService = GoogleKeepService();
+  final TextEditingController _searchController = TextEditingController();
+
+  bool _loading = false;
+  GoogleKeepNotesDataset? _dataset = const GoogleKeepNotesDataset(
+    notes: [],
+    apiUnavailable: true,
+  );
+  String? _error;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connect() {
+    return _loadNotes(interactive: true);
+  }
+
+  Future<void> _loadNotes({bool interactive = false}) async {
+    if (_loading) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final dataset = await _keepService.loadNotes(interactive: interactive);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _dataset = dataset);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      if (!interactive && _isMissingKeepToken(error)) {
+        setState(() => _error = null);
+        return;
+      }
+      setState(() => _error = _keepErrorMessage(error));
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dataset = _dataset;
+    final apiUnavailable = dataset?.apiUnavailable ?? false;
+    final connected = dataset != null && _error == null && !apiUnavailable;
+    final blocked = _error != null;
+    final openKeepMode = apiUnavailable;
+    final filteredNotes = (dataset?.notes ?? const <GoogleKeepNote>[])
+        .where((note) => note.matches(_searchController.text))
+        .toList(growable: false);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.sticky_note_2_outlined, color: widget.module.accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Google Keep',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                _StatusPill(
+                  text: connected
+                      ? '연동됨'
+                      : apiUnavailable
+                      ? '웹에서 확인'
+                      : blocked
+                      ? '연동 제한'
+                      : '자동 확인',
+                  color: blocked
+                      ? const Color(0xFFBA1A1A)
+                      : widget.module.accent,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (apiUnavailable)
+              _KeepApiUnavailablePanel(color: widget.module.accent)
+            else ...[
+              _KeepStatStrip(dataset: dataset, color: widget.module.accent),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchController.text.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: '검색어 지우기',
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                          },
+                        ),
+                  labelText: 'Keep 메모 검색',
+                  hintText: '제목, 본문, 체크리스트 항목 검색',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            _KeepPrimaryAction(
+              loading: _loading,
+              openKeepMode: openKeepMode,
+              connected: connected,
+              onRefresh: _connect,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              _CalendarMessage(
+                icon: Icons.error_outline,
+                text: _error!,
+                color: const Color(0xFFBA1A1A),
+              ),
+            ],
+            if (connected) ...[
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '최근 메모',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  _StatusPill(
+                    text: '${filteredNotes.length}개 표시',
+                    color: widget.module.accent,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (filteredNotes.isEmpty)
+                const _CalendarMessage(
+                  icon: Icons.note_alt_outlined,
+                  text: '표시할 Google Keep 메모가 없습니다.',
+                  color: KangColors.slate,
+                )
+              else
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 760;
+                    final spacing = compact ? 10.0 : 12.0;
+                    final cardWidth = compact
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - spacing) / 2;
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: [
+                        for (final note in filteredNotes.take(24))
+                          SizedBox(
+                            width: cardWidth,
+                            child: _KeepNoteCard(
+                              note: note,
+                              color: widget.module.accent,
+                              onTap: () => _showKeepNoteDetail(note),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showKeepNoteDetail(GoogleKeepNote note) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final viewport = MediaQuery.sizeOf(dialogContext);
+        final compact = viewport.width < 640;
+        return Dialog(
+          alignment: compact ? Alignment.bottomCenter : Alignment.center,
+          insetPadding: compact
+              ? const EdgeInsets.fromLTRB(8, 0, 8, 8)
+              : const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(compact ? 12 : 8),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: compact ? viewport.width - 16 : 760,
+              maxHeight: compact
+                  ? viewport.height * 0.82
+                  : viewport.height - 48,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: compact
+                      ? const EdgeInsets.fromLTRB(16, 12, 4, 12)
+                      : const EdgeInsets.fromLTRB(20, 16, 8, 16),
+                  decoration: BoxDecoration(
+                    color: widget.module.accent.withValues(alpha: 0.12),
+                    border: const Border(
+                      bottom: BorderSide(color: KangColors.line),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          note.displayTitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: KangColors.ink,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '닫기',
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: compact
+                        ? const EdgeInsets.fromLTRB(16, 16, 16, 20)
+                        : const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _StatusPill(
+                              text: note.isChecklist ? '체크리스트' : '텍스트',
+                              color: widget.module.accent,
+                            ),
+                            _StatusPill(
+                              text: '수정 ${_formatKeepDate(note.updatedAt)}',
+                              color: KangColors.slate,
+                            ),
+                            if (note.attachmentCount > 0)
+                              _StatusPill(
+                                text: '첨부 ${note.attachmentCount}개',
+                                color: KangColors.slate,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        if (note.isChecklist)
+                          _KeepChecklist(
+                            note: note,
+                            color: widget.module.accent,
+                          )
+                        else
+                          SelectableText(
+                            note.text.trim().isEmpty ? '내용이 없습니다.' : note.text,
+                            style: const TextStyle(
+                              color: KangColors.ink,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              height: 1.55,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  bool _isMissingKeepToken(Object error) {
+    return error is FirebaseAuthException &&
+        error.code == 'missing-google-access-token';
+  }
+
+  String _keepErrorMessage(Object error) {
+    if (error is FirebaseAuthException) {
+      return switch (error.code) {
+        'popup-closed-by-user' ||
+        'web-context-cancelled' ||
+        'cancelled-popup-request' => 'Google Keep 권한 요청이 취소되었습니다.',
+        'missing-google-access-token' =>
+          'Google 로그인 토큰이 없습니다. Google로 로그인하면 메모 화면에서 자동으로 확인합니다.',
+        'keep-scope-denied' => 'Google Keep 웹에서 메모를 확인해 주세요.',
+        'account-exists-with-different-credential' =>
+          '이 Google 계정은 다른 Firebase 계정에 이미 연결되어 있습니다.',
+        _ => error.message ?? 'Google Keep 확인에 실패했습니다.',
+      };
+    }
+    return error
+        .toString()
+        .replaceFirst('GoogleKeepException: ', '')
+        .replaceFirst('Exception: ', '');
+  }
+}
+
+class _KeepStatStrip extends StatelessWidget {
+  const _KeepStatStrip({required this.dataset, required this.color});
+
+  final GoogleKeepNotesDataset? dataset;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _KeepStat(
+          label: '전체',
+          value: dataset == null ? '-' : '${dataset!.notes.length}',
+          color: color,
+        ),
+        _KeepStat(
+          label: '텍스트',
+          value: dataset == null ? '-' : '${dataset!.textNoteCount}',
+          color: color,
+        ),
+        _KeepStat(
+          label: '체크리스트',
+          value: dataset == null ? '-' : '${dataset!.checklistCount}',
+          color: color,
+        ),
+      ],
+    );
+  }
+}
+
+class _KeepApiUnavailablePanel extends StatelessWidget {
+  const _KeepApiUnavailablePanel({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.check_circle_outline_rounded, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '아래 버튼을 누르면 현재 Google 로그인 상태 그대로 Google Keep 메모와 체크리스트 화면으로 이동합니다.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: KangColors.ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KeepPrimaryAction extends StatelessWidget {
+  const _KeepPrimaryAction({
+    required this.loading,
+    required this.openKeepMode,
+    required this.connected,
+    required this.onRefresh,
+  });
+
+  final bool loading;
+  final bool openKeepMode;
+  final bool connected;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    if (openKeepMode) {
+      return FilledButton.icon(
+        icon: const Icon(Icons.open_in_new_rounded),
+        label: const Text('Google Keep 열기'),
+        onPressed: openGoogleKeep,
+      );
+    }
+
+    return FilledButton.icon(
+      icon: loading
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.sync_rounded),
+      label: Text(connected ? '메모 새로고침' : 'Google Keep 다시 확인'),
+      onPressed: loading ? null : onRefresh,
+    );
+  }
+}
+
+class _KeepStat extends StatelessWidget {
+  const _KeepStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: KangColors.slate,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KeepNoteCard extends StatelessWidget {
+  const _KeepNoteCard({
+    required this.note,
+    required this.color,
+    required this.onTap,
+  });
+
+  final GoogleKeepNote note;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = note.preview.trim();
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Ink(
+          height: 176,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
+            boxShadow: [
+              BoxShadow(
+                color: KangColors.deepPurple.withValues(alpha: 0.05),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      note.isChecklist
+                          ? Icons.checklist_rounded
+                          : Icons.notes_rounded,
+                      color: color,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      note.displayTitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 11),
+              Expanded(
+                child: Text(
+                  preview.isEmpty ? '내용이 없습니다.' : preview,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: KangColors.slate,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _StatusPill(
+                    text: note.isChecklist
+                        ? '${note.pendingItemCount}/${note.items.length} 남음'
+                        : '텍스트',
+                    color: color,
+                  ),
+                  _StatusPill(
+                    text: _formatKeepDate(note.updatedAt),
+                    color: KangColors.slate,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _KeepChecklist extends StatelessWidget {
+  const _KeepChecklist({required this.note, required this.color});
+
+  final GoogleKeepNote note;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final item in note.items)
+          Padding(
+            padding: EdgeInsets.only(left: item.child ? 24 : 0, bottom: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  item.checked
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  color: item.checked ? color : KangColors.slate,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SelectableText(
+                    item.text.trim().isEmpty ? '내용 없음' : item.text,
+                    style: TextStyle(
+                      color: item.checked ? KangColors.slate : KangColors.ink,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      height: 1.42,
+                      decoration: item.checked
+                          ? TextDecoration.lineThrough
+                          : TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _DriveFeaturePanel extends StatefulWidget {
@@ -6735,6 +7424,7 @@ class _HomeModule {
 enum _HomeModuleKind {
   calendar,
   drive,
+  keep,
   university,
   marketCap,
   financial,
