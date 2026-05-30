@@ -62,6 +62,7 @@ class DriveFilesRequest(BaseModel):
     google_access_token: str = Field(min_length=20)
     query: Optional[str] = Field(default=None, max_length=200)
     page_size: int = Field(default=50, ge=1, le=100)
+    include_sheet_names: bool = False
 
 
 class DriveSheetFile(BaseModel):
@@ -75,6 +76,16 @@ class DriveSheetFile(BaseModel):
 
 class DriveFilesResponse(BaseModel):
     files: list[DriveSheetFile]
+
+
+class DriveSheetNamesRequest(BaseModel):
+    id_token: str = Field(min_length=20)
+    google_access_token: str = Field(min_length=20)
+    file_id: str = Field(min_length=5, max_length=300)
+
+
+class DriveSheetNamesResponse(BaseModel):
+    sheet_names: list[str]
 
 
 class DriveImportRequest(BaseModel):
@@ -258,7 +269,12 @@ class ExchangeRate(BaseModel):
     quote: str
     rate: float
     usdBaseRate: float
+    previousRate: Optional[float] = None
+    change: Optional[float] = None
+    changePercent: Optional[float] = None
     date: str
+    marketTime: Optional[str] = None
+    sourceSymbol: Optional[str] = None
 
 
 class MarketFuture(BaseModel):
@@ -286,4 +302,69 @@ class FinancialMarketsResponse(BaseModel):
     treasurySpreads: list[TreasurySpread]
     exchangeRates: list[ExchangeRate]
     futures: list[MarketFuture]
+    errors: list[str]
+
+
+class SubwaySource(BaseModel):
+    title: str
+    provider: str
+    arrivalUrl: str
+    positionUrl: str
+    description: str
+
+
+class SubwayFavoriteStation(BaseModel):
+    station: str
+    line: str
+    label: str
+
+
+class SubwaySummary(BaseModel):
+    station: str
+    line: str
+    lineColor: str
+    arrivalCount: int
+    trainCount: int
+    keyMode: str
+    favoriteStations: list[SubwayFavoriteStation]
+
+
+class SubwayArrival(BaseModel):
+    line: str
+    lineColor: str
+    station: str
+    direction: str
+    destination: str
+    trainLine: str
+    arrivalMessage: str
+    arrivalDetail: str
+    etaSeconds: Optional[int] = None
+    status: str
+    trainNo: str
+    receivedAt: str
+    terminalStation: str
+
+
+class SubwayTrainPosition(BaseModel):
+    line: str
+    lineColor: str
+    station: str
+    trainNo: str
+    destination: str
+    status: str
+    directionCode: str
+    isExpress: bool
+    isLastTrain: bool
+    receivedAt: str
+
+
+class SubwayOverviewResponse(BaseModel):
+    status: str
+    fetchedAt: str
+    cached: bool
+    cacheSeconds: int
+    source: SubwaySource
+    summary: SubwaySummary
+    arrivals: list[SubwayArrival]
+    trains: list[SubwayTrainPosition]
     errors: list[str]

@@ -15,6 +15,7 @@ import '../services/google_drive_api.dart';
 import '../services/google_keep_service.dart';
 import '../services/google_keep_launcher.dart';
 import '../services/stock_market_api.dart';
+import '../services/subway_api.dart';
 import '../theme/kang_theme.dart';
 import '../widgets/kang_mark.dart';
 
@@ -185,6 +186,18 @@ class _HomeScreenState extends State<HomeScreen> {
         screenTitle: '금융정보',
         screenSubtitle: '미국채 금리, 주요 환율, 미국 선물',
         screenIcon: Icons.query_stats_rounded,
+      ),
+      _HomeModule(
+        title: '지하철 정보',
+        subtitle: '실시간 도착·열차 위치',
+        status: '실시간',
+        icon: Icons.train_rounded,
+        accent: Color(0xFF2563EB),
+        surface: Color(0xFFEFF6FF),
+        kind: _HomeModuleKind.subway,
+        screenTitle: '지하철 정보',
+        screenSubtitle: '서울 지하철 실시간 도착정보와 열차 위치',
+        screenIcon: Icons.train_rounded,
       ),
       _HomeModule(
         title: '설정',
@@ -833,6 +846,9 @@ class _FeaturePanel extends StatelessWidget {
     if (module.kind == _HomeModuleKind.financial) {
       return _FinancialInfoFeaturePanel(module: module);
     }
+    if (module.kind == _HomeModuleKind.subway) {
+      return _SubwayFeaturePanel(module: module);
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -923,14 +939,21 @@ class _MarketCapFeaturePanelState extends State<_MarketCapFeaturePanel> {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.86),
+        color: Colors.white.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KangColors.line),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.84)),
+        boxShadow: [
+          BoxShadow(
+            color: widget.module.accent.withValues(alpha: 0.07),
+            blurRadius: 26,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         child: FutureBuilder<MarketCapTopDataset>(
           future: _future,
           builder: (context, snapshot) {
@@ -1058,11 +1081,29 @@ class _MarketCapFeaturePanelState extends State<_MarketCapFeaturePanel> {
                     controller: _searchController,
                     onChanged: (_) => setState(() => _visibleCount = 30),
                     decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.manage_search_rounded),
+                      prefixIcon: Icon(
+                        Icons.manage_search_rounded,
+                        color: widget.module.accent,
+                      ),
                       labelText: '종목 검색',
                       hintText: '회사명, 티커, 국가, 섹터, 산업',
+                      filled: true,
+                      fillColor: Colors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: KangColors.line.withValues(alpha: 0.92),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: widget.module.accent,
+                          width: 1.4,
+                        ),
                       ),
                     ),
                   ),
@@ -1077,6 +1118,16 @@ class _MarketCapFeaturePanelState extends State<_MarketCapFeaturePanel> {
                             child: ChoiceChip(
                               label: Text(sector),
                               selected: activeSector == sector,
+                              selectedColor: widget.module.accent.withValues(
+                                alpha: 0.14,
+                              ),
+                              side: BorderSide(
+                                color: activeSector == sector
+                                    ? widget.module.accent.withValues(
+                                        alpha: 0.28,
+                                      )
+                                    : KangColors.line,
+                              ),
                               onSelected: (_) {
                                 setState(() {
                                   _activeSector = sector;
@@ -1145,6 +1196,7 @@ class _MarketCapCompanyTile extends StatelessWidget {
         : change >= 0
         ? KangColors.mintDeep
         : Colors.red.shade600;
+    final rankAccent = company.rank <= 3 ? KangColors.mintDeep : color;
     final details = [
       company.country,
       company.sector,
@@ -1152,100 +1204,123 @@ class _MarketCapCompanyTile extends StatelessWidget {
     ].where((value) => value.isNotEmpty).join(' · ');
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KangColors.line),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.92)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.055),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '#${company.rank}',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
+          Container(
+            height: 4,
+            decoration: BoxDecoration(
+              color: rankAccent.withValues(alpha: 0.82),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      company.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: KangColors.ink,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        height: 1.2,
-                      ),
-                    ),
-                    if (details.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        details,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: KangColors.slate,
-                          height: 1.35,
+                    Container(
+                      width: 48,
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: rankAccent.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: rankAccent.withValues(alpha: 0.14),
                         ),
                       ),
-                    ],
+                      child: Text(
+                        '#${company.rank}',
+                        style: TextStyle(
+                          color: rankAccent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            company.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: KangColors.ink,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                              height: 1.18,
+                            ),
+                          ),
+                          if (details.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            Text(
+                              details,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: KangColors.slate,
+                                    height: 1.35,
+                                  ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _StatusPill(text: company.symbol, color: rankAccent),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              _StatusPill(text: company.symbol, color: color),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MarketCapMetric(
-                label: '시가총액',
-                value: _formatUsdCompact(company.marketCap),
-              ),
-              _MarketCapMetric(
-                label: '주가',
-                value: _formatUsdPrice(company.price),
-              ),
-              _MarketCapMetric(
-                label: '일일변동',
-                value: _formatSignedPercent(change),
-                valueColor: changeColor,
-              ),
-              _MarketCapMetric(
-                label: 'P/E',
-                value: company.peRatio == null
-                    ? '-'
-                    : _trimDecimal(company.peRatio!, digits: 2),
-              ),
-              _MarketCapMetric(
-                label: '매출',
-                value: _formatUsdCompact(company.revenue),
-              ),
-            ],
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _MarketCapMetric(
+                      icon: Icons.account_balance_wallet_outlined,
+                      label: '시가총액',
+                      value: _formatUsdCompact(company.marketCap),
+                      accent: rankAccent,
+                    ),
+                    _MarketCapMetric(
+                      icon: Icons.payments_outlined,
+                      label: '주가',
+                      value: _formatUsdPrice(company.price),
+                      accent: KangColors.royalPurple,
+                    ),
+                    _MarketCapMetric(
+                      icon: change == null || change >= 0
+                          ? Icons.trending_up_rounded
+                          : Icons.trending_down_rounded,
+                      label: '일일변동',
+                      value: _formatSignedPercent(change),
+                      valueColor: changeColor,
+                      accent: changeColor,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1257,39 +1332,60 @@ class _MarketCapMetric extends StatelessWidget {
   const _MarketCapMetric({
     required this.label,
     required this.value,
+    this.icon,
+    this.accent = KangColors.mintDeep,
     this.valueColor = KangColors.ink,
   });
 
+  final IconData? icon;
   final String label;
   final String value;
+  final Color accent;
   final Color valueColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minWidth: 104),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      constraints: const BoxConstraints(minWidth: 132),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFFAFAFD),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KangColors.line),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.92)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, color: accent, size: 15),
+                const SizedBox(width: 5),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: valueColor, fontWeight: FontWeight.w900),
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ],
       ),
@@ -1326,14 +1422,21 @@ class _FinancialInfoFeaturePanelState
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.86),
+        color: Colors.white.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KangColors.line),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.82)),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.deepPurple.withValues(alpha: 0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         child: FutureBuilder<FinancialMarketsDataset>(
           future: _future,
           builder: (context, snapshot) {
@@ -1423,45 +1526,21 @@ class _FinancialDashboard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            _UniversitySummaryTile(
-              icon: Icons.account_balance_outlined,
-              label: '미 10년물',
-              value: _formatRatePercent(tenYear?.rate),
-              color: color,
-            ),
-            _UniversitySummaryTile(
-              icon: Icons.timeline_rounded,
-              label: '10Y-2Y',
-              value: _formatSpreadPercent(tenTwoSpread?.value),
-              color: KangColors.royalPurple,
-            ),
-            _UniversitySummaryTile(
-              icon: Icons.currency_exchange_rounded,
-              label: 'USD/KRW',
-              value: _formatFxRate(usdKrw?.rate),
-              color: KangColors.mintDeep,
-            ),
-            _UniversitySummaryTile(
-              icon: Icons.show_chart_rounded,
-              label: 'Nasdaq 선물',
-              value: _formatSignedPercent(nasdaqFuture?.changePercent),
-              color: (nasdaqFuture?.changePercent ?? 0) >= 0
-                  ? KangColors.mintDeep
-                  : Colors.red.shade600,
-            ),
-          ],
+        _FinancialMarketHero(
+          dataset: dataset,
+          tenYear: tenYear,
+          tenTwoSpread: tenTwoSpread,
+          usdKrw: usdKrw,
+          nasdaqFuture: nasdaqFuture,
+          color: color,
         ),
         const SizedBox(height: 12),
         _UniversitySourceNote(
           color: color,
-          title: 'U.S. Treasury · Frankfurter/ECB · Yahoo Finance Chart Data',
+          title: 'U.S. Treasury · Yahoo Finance Chart Data',
           description:
-              '미국채 수익률 곡선, 주요 통화 환율, 미국 지수선물과 매크로 지표를 한 화면에서 확인합니다. '
-              '국채/환율 기준일: ${dataset.summary.treasuryDate} / ${dataset.summary.exchangeRateDate}',
+              '환율과 선물은 1분 차트 quote 기준으로 전일 대비 등락을 표시합니다. '
+              '미국채 공식 금리는 Treasury 일일 feed 기준이며 전일 대비 bp를 함께 보여줍니다.',
         ),
         if (dataset.hasErrors) ...[
           const SizedBox(height: 12),
@@ -1472,11 +1551,12 @@ class _FinancialDashboard extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 16),
-        _DriveRowsHeader(
+        _FinancialSectionHeader(
+          icon: Icons.account_balance_outlined,
           count: dataset.treasuryRates.length,
-          loading: false,
           color: color,
-          title: '미국채 수익률 곡선',
+          title: '미국채 수익률',
+          subtitle: dataset.summary.treasuryDate,
         ),
         const SizedBox(height: 8),
         Wrap(
@@ -1497,11 +1577,12 @@ class _FinancialDashboard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 18),
-        _DriveRowsHeader(
+        _FinancialSectionHeader(
+          icon: Icons.currency_exchange_rounded,
           count: dataset.exchangeRates.length,
-          loading: false,
           color: color,
-          title: '주요 환율',
+          title: '실시간 주요 환율',
+          subtitle: _formatMarketCapDate(dataset.summary.exchangeRateDate),
         ),
         const SizedBox(height: 8),
         LayoutBuilder(
@@ -1513,7 +1594,7 @@ class _FinancialDashboard extends StatelessWidget {
               itemCount: dataset.exchangeRates.length,
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: compact ? 2 : 4,
-                mainAxisExtent: 112,
+                mainAxisExtent: compact ? 162 : 154,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
               ),
@@ -1527,16 +1608,353 @@ class _FinancialDashboard extends StatelessWidget {
           },
         ),
         const SizedBox(height: 18),
-        _DriveRowsHeader(
+        _FinancialSectionHeader(
+          icon: Icons.show_chart_rounded,
           count: dataset.futures.length,
-          loading: false,
           color: color,
-          title: '미국 선물·매크로 지표',
+          title: '실시간 선물·매크로',
+          subtitle: 'Yahoo Finance',
         ),
         const SizedBox(height: 8),
         for (final quote in dataset.futures)
           _FinancialFutureTile(quote: quote, color: color),
       ],
+    );
+  }
+}
+
+class _FinancialMarketHero extends StatelessWidget {
+  const _FinancialMarketHero({
+    required this.dataset,
+    required this.tenYear,
+    required this.tenTwoSpread,
+    required this.usdKrw,
+    required this.nasdaqFuture,
+    required this.color,
+  });
+
+  final FinancialMarketsDataset dataset;
+  final TreasuryRate? tenYear;
+  final TreasurySpread? tenTwoSpread;
+  final ExchangeRate? usdKrw;
+  final MarketFutureQuote? nasdaqFuture;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: KangColors.deepPurple,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.mint.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.monitor_heart_outlined,
+                  color: KangColors.mint,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '금융정보 라이브 보드',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '업데이트 ${_formatMarketCapDate(dataset.fetchedAt)} · ${dataset.cacheSeconds}초 캐시',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.72),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _FinancialLiveBadge(color: KangColors.mint),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 620;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _FinancialHeroMetric(
+                    width: narrow ? double.infinity : 150,
+                    label: '미 10년물',
+                    value: _formatRatePercent(tenYear?.rate),
+                    changeText: _formatBasisPointChange(tenYear?.change),
+                    changeValue: tenYear?.change,
+                    icon: Icons.account_balance_outlined,
+                    accent: color,
+                  ),
+                  _FinancialHeroMetric(
+                    width: narrow ? double.infinity : 150,
+                    label: '10Y-2Y',
+                    value: _formatSpreadPercent(tenTwoSpread?.value),
+                    changeText: '스프레드',
+                    changeValue: tenTwoSpread?.value,
+                    icon: Icons.timeline_rounded,
+                    accent: KangColors.orchid,
+                  ),
+                  _FinancialHeroMetric(
+                    width: narrow ? double.infinity : 150,
+                    label: 'USD/KRW',
+                    value: _formatFxRate(usdKrw?.rate),
+                    changeText:
+                        '${_formatFxChange(usdKrw?.change, usdKrw?.rate)} · ${_formatSignedPercent(usdKrw?.changePercent)}',
+                    changeValue: usdKrw?.change,
+                    icon: Icons.currency_exchange_rounded,
+                    accent: KangColors.mint,
+                  ),
+                  _FinancialHeroMetric(
+                    width: narrow ? double.infinity : 150,
+                    label: 'Nasdaq 선물',
+                    value: _formatMarketQuotePrice(nasdaqFuture?.price),
+                    changeText: _formatSignedPercent(
+                      nasdaqFuture?.changePercent,
+                    ),
+                    changeValue: nasdaqFuture?.changePercent,
+                    icon: Icons.show_chart_rounded,
+                    accent: KangColors.mintDeep,
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinancialHeroMetric extends StatelessWidget {
+  const _FinancialHeroMetric({
+    required this.width,
+    required this.label,
+    required this.value,
+    required this.changeText,
+    required this.changeValue,
+    required this.icon,
+    required this.accent,
+  });
+
+  final double width;
+  final String label;
+  final String value;
+  final String changeText;
+  final double? changeValue;
+  final IconData icon;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final constrainedWidth = width.isFinite ? width : null;
+    return SizedBox(
+      width: constrainedWidth,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: accent, size: 17),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.74),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 9),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _FinancialChangePill(value: changeValue, text: changeText),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FinancialSectionHeader extends StatelessWidget {
+  const _FinancialSectionHeader({
+    required this.icon,
+    required this.count,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final int count;
+  final Color color;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.09),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              if (subtitle.isNotEmpty)
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                ),
+            ],
+          ),
+        ),
+        _StatusPill(text: '$count개', color: color),
+      ],
+    );
+  }
+}
+
+class _FinancialLiveBadge extends StatelessWidget {
+  const _FinancialLiveBadge({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.bolt_rounded, color: color, size: 14),
+          const SizedBox(width: 4),
+          Text(
+            'LIVE',
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinancialChangePill extends StatelessWidget {
+  const _FinancialChangePill({required this.value, required this.text});
+
+  final double? value;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final neutral = value == null || value!.abs() < 0.0000001;
+    final positive = (value ?? 0) > 0;
+    final color = neutral
+        ? KangColors.slate
+        : positive
+        ? KangColors.mintDeep
+        : Colors.red.shade600;
+    final icon = neutral
+        ? Icons.remove_rounded
+        : positive
+        ? Icons.arrow_upward_rounded
+        : Icons.arrow_downward_rounded;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1549,17 +1967,20 @@ class _TreasuryRateTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final changeColor = (rate.change ?? 0) >= 0
-        ? KangColors.mintDeep
-        : Colors.red.shade600;
-
     return Container(
-      width: 118,
+      width: 122,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KangColors.line),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.9)),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.deepPurple.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1575,7 +1996,16 @@ class _TreasuryRateTile extends StatelessWidget {
               Icon(Icons.account_balance_outlined, color: color, size: 16),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 3),
+          Text(
+            rate.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+          ),
+          const SizedBox(height: 9),
           Text(
             _formatRatePercent(rate.rate),
             style: const TextStyle(
@@ -1584,14 +2014,10 @@ class _TreasuryRateTile extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            _formatBasisPointChange(rate.change),
-            style: TextStyle(
-              color: changeColor,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
+          const SizedBox(height: 8),
+          _FinancialChangePill(
+            value: rate.change,
+            text: _formatBasisPointChange(rate.change),
           ),
         ],
       ),
@@ -1614,13 +2040,15 @@ class _SpreadChip extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 150),
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.06),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.14)),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(Icons.stacked_line_chart_rounded, color: color, size: 16),
+          const SizedBox(width: 7),
           Text(
             spread.code,
             style: const TextStyle(
@@ -1647,12 +2075,24 @@ class _ExchangeRateTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final changeValue = rate.change;
+    final updateText = rate.marketTime.isEmpty
+        ? rate.date
+        : _formatMarketCapDate(rate.marketTime);
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KangColors.line),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.9)),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.deepPurple.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1667,27 +2107,56 @@ class _ExchangeRateTile extends StatelessWidget {
                   style: TextStyle(color: color, fontWeight: FontWeight.w900),
                 ),
               ),
-              const Icon(
-                Icons.currency_exchange_rounded,
-                size: 16,
-                color: KangColors.slate,
-              ),
+              _FinancialLiveBadge(color: color),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 9),
           Text(
             _formatFxRate(rate.rate),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: KangColors.ink,
-              fontSize: 17,
+              fontSize: 22,
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          _FinancialChangePill(
+            value: changeValue,
+            text:
+                '${_formatFxChange(rate.change, rate.rate)} · ${_formatSignedPercent(rate.changePercent)}',
+          ),
+          const Spacer(),
+          Divider(height: 13, color: KangColors.line.withValues(alpha: 0.72)),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  rate.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                updateText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: KangColors.slate,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
           Text(
-            rate.label,
+            '전일 ${_formatFxRate(rate.previousRate)}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(
@@ -1716,9 +2185,16 @@ class _FinancialFutureTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KangColors.line),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.9)),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.deepPurple.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1767,7 +2243,10 @@ class _FinancialFutureTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _StatusPill(text: quote.group, color: color),
+              _FinancialChangePill(
+                value: quote.changePercent,
+                text: _formatSignedPercent(quote.changePercent),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -1793,9 +2272,2048 @@ class _FinancialFutureTile extends StatelessWidget {
                 label: '전일종가',
                 value: _formatMarketQuotePrice(quote.previousClose),
               ),
+              _MarketCapMetric(label: '구분', value: quote.group),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SubwayFeaturePanel extends StatefulWidget {
+  const _SubwayFeaturePanel({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  State<_SubwayFeaturePanel> createState() => _SubwayFeaturePanelState();
+}
+
+class _SubwayFeaturePanelState extends State<_SubwayFeaturePanel> {
+  final SubwayApi _subwayApi = SubwayApi();
+  final TextEditingController _stationController = TextEditingController(
+    text: '야탑',
+  );
+
+  late Future<SubwayOverviewDataset> _future;
+  String _station = '야탑';
+  final String _line = '수인분당선';
+  String? _directionFilter;
+  bool _showTimetable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  @override
+  void dispose() {
+    _stationController.dispose();
+    super.dispose();
+  }
+
+  Future<SubwayOverviewDataset> _load() {
+    return _subwayApi.loadOverview(station: _station, line: _line);
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = _load();
+    });
+  }
+
+  void _submitSearch() {
+    final station = _stationController.text.trim().replaceAll('역', '');
+    if (station.isEmpty) {
+      return;
+    }
+    setState(() {
+      _station = station;
+      _directionFilter = null;
+      _showTimetable = false;
+      _future = _load();
+    });
+  }
+
+  void _selectDirection(String? direction) {
+    setState(() {
+      _directionFilter = _directionFilter == direction ? null : direction;
+    });
+  }
+
+  void _selectRealtimeMode(bool showTimetable) {
+    setState(() {
+      _showTimetable = showTimetable;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.86)),
+        boxShadow: [
+          BoxShadow(
+            color: widget.module.accent.withValues(alpha: 0.08),
+            blurRadius: 26,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: FutureBuilder<SubwayOverviewDataset>(
+          future: _future,
+          builder: (context, snapshot) {
+            final loading = snapshot.connectionState != ConnectionState.done;
+            final dataset = snapshot.data;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.train_rounded, color: widget.module.accent),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '지하철 라이브',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton.outlined(
+                      tooltip: '지하철 정보 새로고침',
+                      icon: const Icon(Icons.refresh_rounded),
+                      color: widget.module.accent,
+                      onPressed: loading ? null : _refresh,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                _SubwaySearchBar(
+                  stationController: _stationController,
+                  color: widget.module.accent,
+                  onSubmitted: _submitSearch,
+                ),
+                const SizedBox(height: 14),
+                if (loading)
+                  const _CalendarMessage(
+                    icon: Icons.cloud_sync_outlined,
+                    text: '서울시 실시간 지하철 정보를 불러오고 있습니다.',
+                    color: KangColors.slate,
+                  )
+                else if (snapshot.hasError || dataset == null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _CalendarMessage(
+                        icon: Icons.error_outline_rounded,
+                        text:
+                            snapshot.error?.toString() ?? '지하철 정보를 불러오지 못했습니다.',
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('다시 조회'),
+                        onPressed: _refresh,
+                      ),
+                    ],
+                  )
+                else
+                  _SubwayDashboard(
+                    dataset: dataset,
+                    color: widget.module.accent,
+                    directionFilter: _directionFilter,
+                    showTimetable: _showTimetable,
+                    onDirectionSelected: _selectDirection,
+                    onModeChanged: _selectRealtimeMode,
+                    onRefresh: _refresh,
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _SubwaySearchBar extends StatelessWidget {
+  const _SubwaySearchBar({
+    required this.stationController,
+    required this.color,
+    required this.onSubmitted,
+  });
+
+  final TextEditingController stationController;
+  final Color color;
+  final VoidCallback onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.deepPurple.withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Text(
+            '역 검색',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: KangColors.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: color.withValues(alpha: 0.28)),
+                boxShadow: [
+                  BoxShadow(
+                    color: KangColors.deepPurple.withValues(alpha: 0.04),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: TextField(
+                controller: stationController,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => onSubmitted(),
+                decoration: InputDecoration(
+                  icon: Icon(Icons.search_rounded, color: color),
+                  hintText: '예: 강남, 야탑, 모란',
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                ),
+                style: const TextStyle(
+                  color: KangColors.ink,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton.filled(
+            tooltip: '조회',
+            icon: const Icon(Icons.search_rounded),
+            style: IconButton.styleFrom(backgroundColor: color),
+            onPressed: onSubmitted,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _SubwayLineSelector extends StatelessWidget {
+  const _SubwayLineSelector({
+    required this.lines,
+    required this.selectedLine,
+    required this.expressOnly,
+    required this.color,
+    required this.onSelected,
+    required this.onExpressChanged,
+  });
+
+  final List<String> lines;
+  final String selectedLine;
+  final bool expressOnly;
+  final Color color;
+  final ValueChanged<String> onSelected;
+  final ValueChanged<bool> onExpressChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final line in lines)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _SubwayLineChoiceChip(
+                line: line,
+                selected:
+                    line == selectedLine ||
+                    (line == '전체 노선' && selectedLine.isEmpty),
+                color: line == '전체 노선'
+                    ? color
+                    : _subwayColorForLine(line, color),
+                onTap: () => onSelected(line),
+              ),
+            ),
+          Container(
+            width: 1,
+            height: 24,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            color: KangColors.line,
+          ),
+          _SubwayLineChoiceChip(
+            line: '급행',
+            selected: expressOnly,
+            color: Colors.red.shade600,
+            onTap: () => onExpressChanged(!expressOnly),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubwayLineChoiceChip extends StatelessWidget {
+  const _SubwayLineChoiceChip({
+    required this.line,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String line;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final compactLine = RegExp(r'^\d호선$').hasMatch(line);
+    final wideChip = !compactLine;
+    final label = compactLine ? line.replaceAll('호선', '') : line;
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        height: 34,
+        constraints: BoxConstraints(minWidth: wideChip ? 72 : 34),
+        alignment: Alignment.center,
+        padding: EdgeInsets.symmetric(horizontal: wideChip ? 12 : 0),
+        decoration: BoxDecoration(
+          color: selected ? color : Colors.white,
+          shape: wideChip ? BoxShape.rectangle : BoxShape.circle,
+          borderRadius: wideChip ? BorderRadius.circular(999) : null,
+          border: Border.all(
+            color: selected ? color : color.withValues(alpha: 0.28),
+            width: 1.4,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected
+                ? Colors.white
+                : wideChip
+                ? color
+                : KangColors.ink,
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SubwayDashboard extends StatelessWidget {
+  const _SubwayDashboard({
+    required this.dataset,
+    required this.color,
+    required this.directionFilter,
+    required this.showTimetable,
+    required this.onDirectionSelected,
+    required this.onModeChanged,
+    required this.onRefresh,
+  });
+
+  final SubwayOverviewDataset dataset;
+  final Color color;
+  final String? directionFilter;
+  final bool showTimetable;
+  final ValueChanged<String?> onDirectionSelected;
+  final ValueChanged<bool> onModeChanged;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final subwayColor = dataset.arrivals.isNotEmpty
+        ? _colorFromHex(dataset.arrivals.first.lineColor, color)
+        : _colorFromHex(dataset.summary.lineColor, color);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (dataset.hasErrors) ...[
+          _CalendarMessage(
+            icon: Icons.warning_amber_rounded,
+            text: '일부 지하철 데이터 오류: ${dataset.errors.join(' · ')}',
+            color: Colors.orange.shade700,
+          ),
+          const SizedBox(height: 12),
+        ],
+        _SubwayBottomPanel(
+          dataset: dataset,
+          color: subwayColor,
+          directionFilter: directionFilter,
+          showTimetable: showTimetable,
+          onDirectionSelected: onDirectionSelected,
+          onModeChanged: onModeChanged,
+          onRefresh: onRefresh,
+        ),
+      ],
+    );
+  }
+}
+
+// ignore: unused_element
+class _SubwayMapExperience extends StatelessWidget {
+  const _SubwayMapExperience({
+    required this.dataset,
+    required this.color,
+    required this.lineScope,
+    required this.expressOnly,
+  });
+
+  final SubwayOverviewDataset dataset;
+  final Color color;
+  final String lineScope;
+  final bool expressOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryArrival = dataset.arrivals.isNotEmpty
+        ? dataset.arrivals.first
+        : null;
+    final highlightAll = lineScope == '전체 노선';
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+        final height = compact ? 500.0 : 450.0;
+        return Container(
+          height: height,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFDFEFF),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: KangColors.line),
+            boxShadow: [
+              BoxShadow(
+                color: KangColors.deepPurple.withValues(alpha: 0.07),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _SubwayMapPainter(
+                    activeLine: highlightAll ? dataset.summary.line : lineScope,
+                    activeStation: dataset.summary.station,
+                    highlightAll: highlightAll,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 14,
+                left: 14,
+                child: _SubwayMapBadge(
+                  icon: Icons.map_outlined,
+                  text: '수도권 노선도',
+                  color: color,
+                ),
+              ),
+              Positioned(
+                top: 14,
+                right: 14,
+                child: _FinancialLiveBadge(color: color),
+              ),
+              Center(
+                child: _SubwayRouteOverlay(
+                  station: dataset.summary.station,
+                  line: dataset.summary.line,
+                  destination: primaryArrival?.destination ?? '',
+                  expressOnly: expressOnly,
+                  color: color,
+                ),
+              ),
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 18,
+                child: _SubwayCurrentStationPill(
+                  dataset: dataset,
+                  arrival: primaryArrival,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SubwayMapBadge extends StatelessWidget {
+  const _SubwayMapBadge({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: KangColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.deepPurple.withValues(alpha: 0.08),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: const TextStyle(
+              color: KangColors.ink,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubwayRouteOverlay extends StatelessWidget {
+  const _SubwayRouteOverlay({
+    required this.station,
+    required this.line,
+    required this.destination,
+    required this.expressOnly,
+    required this.color,
+  });
+
+  final String station;
+  final String line;
+  final String destination;
+  final bool expressOnly;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 226,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: KangColors.ink.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.deepPurple.withValues(alpha: 0.24),
+            blurRadius: 18,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              _SubwayRouteNode(
+                icon: Icons.location_on_rounded,
+                label: '출발',
+                color: KangColors.mintDeep,
+              ),
+              Expanded(
+                child: Divider(color: Colors.white.withValues(alpha: 0.16)),
+              ),
+              _SubwayRouteNode(
+                icon: Icons.location_on_rounded,
+                label: '경유',
+                color: KangColors.slate,
+              ),
+              Expanded(
+                child: Divider(color: Colors.white.withValues(alpha: 0.16)),
+              ),
+              _SubwayRouteNode(
+                icon: Icons.location_on_rounded,
+                label: '도착',
+                color: Colors.deepOrange,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              [
+                '$station역',
+                line,
+                if (expressOnly) '급행',
+                if (destination.isNotEmpty) '$destination행',
+              ].join(' · '),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubwayRouteNode extends StatelessWidget {
+  const _SubwayRouteNode({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 22),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SubwayCurrentStationPill extends StatelessWidget {
+  const _SubwayCurrentStationPill({
+    required this.dataset,
+    required this.arrival,
+    required this.color,
+  });
+
+  final SubwayOverviewDataset dataset;
+  final SubwayArrival? arrival;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final destination = arrival?.destination ?? '';
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          _SubwayLineBadge(line: dataset.summary.line, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${dataset.summary.station}역',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: KangColors.ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            destination.isEmpty ? '실시간' : '$destination행',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: color, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubwayBottomPanel extends StatelessWidget {
+  const _SubwayBottomPanel({
+    required this.dataset,
+    required this.color,
+    required this.directionFilter,
+    required this.showTimetable,
+    required this.onDirectionSelected,
+    required this.onModeChanged,
+    required this.onRefresh,
+  });
+
+  final SubwayOverviewDataset dataset;
+  final Color color;
+  final String? directionFilter;
+  final bool showTimetable;
+  final ValueChanged<String?> onDirectionSelected;
+  final ValueChanged<bool> onModeChanged;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    const leftTarget = '상행';
+    const rightTarget = '하행';
+    final visibleArrivals = directionFilter == null
+        ? dataset.arrivals
+        : dataset.arrivals
+              .where((arrival) => _isSubwayDirection(arrival, directionFilter!))
+              .toList();
+    final groupedArrivals = _groupSubwayArrivalsByDirection(visibleArrivals);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.deepPurple.withValues(alpha: 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 46,
+              height: 4,
+              decoration: BoxDecoration(
+                color: KangColors.line,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _SubwayRouteBar(
+            station: dataset.summary.station,
+            left: leftTarget,
+            right: rightTarget,
+            selectedDirection: directionFilter,
+            color: color,
+            onLeftTap: () => onDirectionSelected(leftTarget),
+            onCenterTap: () => onDirectionSelected(null),
+            onRightTap: () => onDirectionSelected(rightTarget),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _SubwaySegment(
+                text: '실시간',
+                selected: !showTimetable,
+                color: color,
+                onTap: () => onModeChanged(false),
+              ),
+              const SizedBox(width: 6),
+              _SubwaySegment(
+                text: '시간표',
+                selected: showTimetable,
+                color: color,
+                onTap: () => onModeChanged(true),
+              ),
+              const Spacer(),
+              Text(
+                _formatMarketCapDate(dataset.fetchedAt),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: KangColors.slate),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: '도착정보 새로고침',
+                onPressed: onRefresh,
+                icon: const Icon(Icons.refresh_rounded),
+                color: KangColors.slate,
+                iconSize: 20,
+                constraints: const BoxConstraints.tightFor(
+                  width: 34,
+                  height: 34,
+                ),
+                padding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (visibleArrivals.isEmpty)
+            _CalendarMessage(
+              icon: Icons.train_outlined,
+              text: directionFilter == null
+                  ? '현재 표시할 도착 정보가 없습니다.'
+                  : '$directionFilter방향 도착 정보가 없습니다. 가운데 역 이름을 누르면 전체로 돌아갑니다.',
+              color: KangColors.slate,
+            )
+          else if (showTimetable)
+            _SubwayTimetablePreview(arrivals: visibleArrivals, color: color)
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 560;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: math.min(groupedArrivals.length, 2),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: compact ? 2 : 4,
+                    mainAxisExtent: 132,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemBuilder: (context, index) {
+                    final group = groupedArrivals[index];
+                    return _SubwayDirectionArrivalCard(
+                      target: group.key,
+                      arrivals: group.value,
+                      color: color,
+                      onTap: () => onDirectionSelected(group.key),
+                    );
+                  },
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubwayRouteBar extends StatelessWidget {
+  const _SubwayRouteBar({
+    required this.station,
+    required this.left,
+    required this.right,
+    required this.selectedDirection,
+    required this.color,
+    required this.onLeftTap,
+    required this.onCenterTap,
+    required this.onRightTap,
+  });
+
+  final String station;
+  final String left;
+  final String right;
+  final String? selectedDirection;
+  final Color color;
+  final VoidCallback onLeftTap;
+  final VoidCallback onCenterTap;
+  final VoidCallback onRightTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 46,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(999),
+              ),
+              onTap: onLeftTap,
+              child: Container(
+                height: 46,
+                decoration: BoxDecoration(
+                  color: selectedDirection == left
+                      ? Colors.white.withValues(alpha: 0.18)
+                      : Colors.transparent,
+                  borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(999),
+                  ),
+                ),
+                child: _SubwayRouteBarText(
+                  text: left.isEmpty ? '출발' : left,
+                  align: TextAlign.center,
+                  icon: Icons.chevron_left_rounded,
+                ),
+              ),
+            ),
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: onCenterTap,
+            child: Container(
+              height: 46,
+              constraints: const BoxConstraints(minWidth: 142),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: color, width: 2),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.swap_vert_rounded, color: color, size: 20),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      station,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: InkWell(
+              borderRadius: const BorderRadius.horizontal(
+                right: Radius.circular(999),
+              ),
+              onTap: onRightTap,
+              child: Container(
+                height: 46,
+                decoration: BoxDecoration(
+                  color: selectedDirection == right
+                      ? Colors.white.withValues(alpha: 0.18)
+                      : Colors.transparent,
+                  borderRadius: const BorderRadius.horizontal(
+                    right: Radius.circular(999),
+                  ),
+                ),
+                child: _SubwayRouteBarText(
+                  text: right.isEmpty ? '도착' : right,
+                  align: TextAlign.center,
+                  trailing: Icons.chevron_right_rounded,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubwayRouteBarText extends StatelessWidget {
+  const _SubwayRouteBarText({
+    required this.text,
+    required this.align,
+    this.icon,
+    this.trailing,
+  });
+
+  final String text;
+  final TextAlign align;
+  final IconData? icon;
+  final IconData? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (icon != null) Icon(icon, color: Colors.white, size: 19),
+        Flexible(
+          child: Text(
+            text,
+            textAlign: align,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        if (trailing != null) Icon(trailing, color: Colors.white, size: 19),
+      ],
+    );
+  }
+}
+
+class _SubwaySegment extends StatelessWidget {
+  const _SubwaySegment({
+    required this.text,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String text;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.1) : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: selected ? color : KangColors.line),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: selected ? color : KangColors.slate,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SubwayDirectionArrivalCard extends StatelessWidget {
+  const _SubwayDirectionArrivalCard({
+    required this.target,
+    required this.arrivals,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String target;
+  final List<SubwayArrival> arrivals;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final lineColor = arrivals.isNotEmpty
+        ? _colorFromHex(arrivals.first.lineColor, color)
+        : color;
+    final rows = arrivals.take(2).toList(growable: false);
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: KangColors.line),
+          boxShadow: [
+            BoxShadow(
+              color: lineColor.withValues(alpha: 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 7),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _formatSubwayDirectionTitle(target),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: KangColors.ink,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: KangColors.slate),
+              ],
+            ),
+            const Divider(height: 18),
+            for (final arrival in rows)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: _SubwayArrivalLine(arrival: arrival, color: lineColor),
+              ),
+            if (rows.length < 2)
+              Text(
+                '다음 열차 확인 중',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SubwayArrivalLine extends StatelessWidget {
+  const _SubwayArrivalLine({required this.arrival, required this.color});
+
+  final SubwayArrival arrival;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final position = arrival.arrivalDetail.isNotEmpty
+        ? arrival.arrivalDetail
+        : arrival.status;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            position,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: KangColors.slate),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          _formatSubwayArrivalEta(arrival),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: _subwayArrivalEtaColor(arrival, color),
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SubwayTimetablePreview extends StatelessWidget {
+  const _SubwayTimetablePreview({required this.arrivals, required this.color});
+
+  final List<SubwayArrival> arrivals;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: KangColors.surfaceWarm.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        children: [
+          for (final arrival in arrivals.take(6))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  _SubwayLineBadge(
+                    line: arrival.line.isEmpty ? '-' : arrival.line,
+                    color: _colorFromHex(arrival.lineColor, color),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      [
+                        if (arrival.destination.isNotEmpty)
+                          '${arrival.destination}행',
+                        if (arrival.arrivalDetail.isNotEmpty)
+                          arrival.arrivalDetail,
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatSubwayArrivalEta(arrival),
+                    style: TextStyle(
+                      color: _subwayArrivalEtaColor(arrival, color),
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubwayRouteSpec {
+  const _SubwayRouteSpec({
+    required this.line,
+    required this.fallback,
+    required this.points,
+    required this.labels,
+  });
+
+  final String line;
+  final Color fallback;
+  final List<Offset> points;
+  final Map<String, Offset> labels;
+}
+
+class _SubwayMapPainter extends CustomPainter {
+  _SubwayMapPainter({
+    required this.activeLine,
+    required this.activeStation,
+    required this.highlightAll,
+  });
+
+  final String activeLine;
+  final String activeStation;
+  final bool highlightAll;
+
+  static const List<_SubwayRouteSpec> _routes = [
+    _SubwayRouteSpec(
+      line: '1호선',
+      fallback: Color(0xFF0052A4),
+      points: [
+        Offset(0.05, 0.66),
+        Offset(0.20, 0.62),
+        Offset(0.36, 0.58),
+        Offset(0.49, 0.51),
+        Offset(0.66, 0.46),
+        Offset(0.94, 0.40),
+      ],
+      labels: {
+        '서울': Offset(0.22, 0.62),
+        '시청': Offset(0.31, 0.59),
+        '종로3가': Offset(0.43, 0.54),
+        '청량리': Offset(0.72, 0.44),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '2호선',
+      fallback: Color(0xFF00A84D),
+      points: [
+        Offset(0.18, 0.43),
+        Offset(0.32, 0.36),
+        Offset(0.52, 0.34),
+        Offset(0.69, 0.41),
+        Offset(0.74, 0.56),
+        Offset(0.59, 0.68),
+        Offset(0.38, 0.67),
+        Offset(0.23, 0.58),
+        Offset(0.18, 0.43),
+      ],
+      labels: {
+        '홍대입구': Offset(0.24, 0.55),
+        '왕십리': Offset(0.64, 0.39),
+        '잠실': Offset(0.73, 0.48),
+        '선릉': Offset(0.66, 0.58),
+        '강남': Offset(0.57, 0.66),
+        '사당': Offset(0.40, 0.67),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '3호선',
+      fallback: Color(0xFFEF7C1C),
+      points: [
+        Offset(0.41, 0.08),
+        Offset(0.45, 0.22),
+        Offset(0.48, 0.36),
+        Offset(0.52, 0.50),
+        Offset(0.56, 0.65),
+        Offset(0.60, 0.87),
+      ],
+      labels: {
+        '경복궁': Offset(0.45, 0.22),
+        '충무로': Offset(0.50, 0.43),
+        '고속터미널': Offset(0.54, 0.58),
+        '양재': Offset(0.58, 0.72),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '4호선',
+      fallback: Color(0xFF00A5DE),
+      points: [
+        Offset(0.15, 0.12),
+        Offset(0.28, 0.27),
+        Offset(0.40, 0.41),
+        Offset(0.52, 0.55),
+        Offset(0.63, 0.70),
+        Offset(0.77, 0.88),
+      ],
+      labels: {
+        '혜화': Offset(0.31, 0.30),
+        '명동': Offset(0.43, 0.45),
+        '사당': Offset(0.65, 0.72),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '5호선',
+      fallback: Color(0xFF996CAC),
+      points: [
+        Offset(0.06, 0.30),
+        Offset(0.25, 0.29),
+        Offset(0.44, 0.28),
+        Offset(0.61, 0.29),
+        Offset(0.82, 0.32),
+        Offset(0.96, 0.36),
+      ],
+      labels: {
+        '여의도': Offset(0.22, 0.29),
+        '광화문': Offset(0.40, 0.28),
+        '왕십리': Offset(0.66, 0.30),
+        '오금': Offset(0.90, 0.35),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '6호선',
+      fallback: Color(0xFFCD7C2F),
+      points: [
+        Offset(0.08, 0.22),
+        Offset(0.23, 0.19),
+        Offset(0.40, 0.18),
+        Offset(0.58, 0.20),
+        Offset(0.78, 0.24),
+        Offset(0.92, 0.28),
+      ],
+      labels: {
+        '합정': Offset(0.23, 0.19),
+        '이태원': Offset(0.50, 0.19),
+        '약수': Offset(0.62, 0.21),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '7호선',
+      fallback: Color(0xFF747F00),
+      points: [
+        Offset(0.79, 0.12),
+        Offset(0.75, 0.28),
+        Offset(0.71, 0.44),
+        Offset(0.69, 0.60),
+        Offset(0.66, 0.78),
+        Offset(0.62, 0.92),
+      ],
+      labels: {
+        '건대입구': Offset(0.74, 0.31),
+        '고속터미널': Offset(0.69, 0.60),
+        '이수': Offset(0.65, 0.80),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '8호선',
+      fallback: Color(0xFFE6186C),
+      points: [
+        Offset(0.76, 0.52),
+        Offset(0.84, 0.59),
+        Offset(0.91, 0.69),
+        Offset(0.95, 0.82),
+      ],
+      labels: {
+        '잠실': Offset(0.77, 0.53),
+        '가락시장': Offset(0.86, 0.62),
+        '모란': Offset(0.94, 0.80),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '9호선',
+      fallback: Color(0xFFBDB092),
+      points: [
+        Offset(0.08, 0.74),
+        Offset(0.25, 0.73),
+        Offset(0.42, 0.70),
+        Offset(0.56, 0.64),
+        Offset(0.72, 0.60),
+        Offset(0.92, 0.58),
+      ],
+      labels: {
+        '김포공항': Offset(0.12, 0.74),
+        '여의도': Offset(0.29, 0.73),
+        '신논현': Offset(0.51, 0.66),
+        '선정릉': Offset(0.65, 0.62),
+        '종합운동장': Offset(0.80, 0.59),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '신분당선',
+      fallback: Color(0xFFD4003B),
+      points: [
+        Offset(0.49, 0.58),
+        Offset(0.55, 0.68),
+        Offset(0.61, 0.80),
+        Offset(0.68, 0.94),
+      ],
+      labels: {
+        '신논현': Offset(0.50, 0.60),
+        '강남': Offset(0.55, 0.68),
+        '양재': Offset(0.60, 0.78),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '공항철도',
+      fallback: Color(0xFF0090D2),
+      points: [
+        Offset(0.02, 0.14),
+        Offset(0.16, 0.20),
+        Offset(0.28, 0.27),
+        Offset(0.38, 0.33),
+      ],
+      labels: {
+        '김포공항': Offset(0.13, 0.20),
+        '홍대입구': Offset(0.28, 0.27),
+        '서울': Offset(0.38, 0.33),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '경의중앙선',
+      fallback: Color(0xFF77C4A3),
+      points: [
+        Offset(0.04, 0.39),
+        Offset(0.20, 0.39),
+        Offset(0.35, 0.38),
+        Offset(0.52, 0.37),
+        Offset(0.70, 0.37),
+        Offset(0.95, 0.38),
+      ],
+      labels: {
+        '공덕': Offset(0.22, 0.39),
+        '용산': Offset(0.40, 0.38),
+        '왕십리': Offset(0.68, 0.37),
+      },
+    ),
+    _SubwayRouteSpec(
+      line: '수인분당선',
+      fallback: Color(0xFFF5A200),
+      points: [
+        Offset(0.21, 0.86),
+        Offset(0.35, 0.78),
+        Offset(0.51, 0.70),
+        Offset(0.68, 0.62),
+        Offset(0.84, 0.54),
+      ],
+      labels: {
+        '수원': Offset(0.23, 0.85),
+        '압구정로데오': Offset(0.48, 0.71),
+        '선릉': Offset(0.60, 0.66),
+        '수서': Offset(0.78, 0.57),
+      },
+    ),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final backgroundPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFFFFFFF), Color(0xFFF5FAFF)],
+      ).createShader(rect);
+    canvas.drawRect(rect, backgroundPaint);
+
+    final gridPaint = Paint()
+      ..color = KangColors.line.withValues(alpha: 0.18)
+      ..strokeWidth = 1;
+    for (var i = 1; i < 6; i++) {
+      final y = size.height * i / 6;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+    for (var i = 1; i < 5; i++) {
+      final x = size.width * i / 5;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
+
+    final hasActiveStation = _routes.any(
+      (route) => route.labels.containsKey(activeStation),
+    );
+    for (final route in _routes) {
+      _drawRoute(canvas, size, route);
+    }
+    if (!hasActiveStation && activeStation.isNotEmpty) {
+      _drawFloatingStation(canvas, size);
+    }
+  }
+
+  void _drawRoute(Canvas canvas, Size size, _SubwayRouteSpec route) {
+    final isActive = activeLine == route.line;
+    final color = _subwayColorForLine(route.line, route.fallback);
+    final visibleAsMain = highlightAll || isActive;
+    final paint = Paint()
+      ..color = color.withValues(
+        alpha: visibleAsMain ? (isActive ? 0.98 : 0.82) : 0.28,
+      )
+      ..strokeWidth = visibleAsMain ? (isActive ? 6.2 : 4.6) : 3.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()
+      ..moveTo(
+        route.points.first.dx * size.width,
+        route.points.first.dy * size.height,
+      );
+    for (final point in route.points.skip(1)) {
+      path.lineTo(point.dx * size.width, point.dy * size.height);
+    }
+    canvas.drawPath(path, paint);
+
+    final markerPoint = Offset(
+      route.points.first.dx * size.width,
+      route.points.first.dy * size.height,
+    );
+    _drawLineMarker(canvas, route.line, markerPoint, color, visibleAsMain);
+
+    for (final entry in route.labels.entries) {
+      final point = Offset(
+        entry.value.dx * size.width,
+        entry.value.dy * size.height,
+      );
+      final selected = entry.key == activeStation;
+      final stationPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      final borderPaint = Paint()
+        ..color = selected
+            ? color
+            : color.withValues(alpha: visibleAsMain ? 0.78 : 0.34)
+        ..strokeWidth = selected ? 3 : 1.8
+        ..style = PaintingStyle.stroke;
+      canvas.drawCircle(point, selected ? 7.2 : 4.7, stationPaint);
+      canvas.drawCircle(point, selected ? 7.2 : 4.7, borderPaint);
+      _drawLabel(
+        canvas,
+        entry.key,
+        point.translate(0, selected ? -24 : -18),
+        selected
+            ? KangColors.ink
+            : KangColors.ink.withValues(alpha: visibleAsMain ? 0.70 : 0.42),
+        selected,
+      );
+    }
+  }
+
+  void _drawLineMarker(
+    Canvas canvas,
+    String line,
+    Offset center,
+    Color color,
+    bool emphasized,
+  ) {
+    final text = switch (line) {
+      '공항철도' => 'AREX',
+      '경의중앙선' => '경의',
+      '수인분당선' => '수인',
+      '신분당선' => '신분당',
+      _ => line.replaceAll('호선', ''),
+    };
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(maxWidth: 54);
+    final width = math.max(24.0, painter.width + 12);
+    final origin = Offset(center.dx - width / 2, center.dy - 26);
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(origin.dx, origin.dy, width, 21),
+      const Radius.circular(999),
+    );
+    canvas.drawRRect(
+      rect,
+      Paint()..color = color.withValues(alpha: emphasized ? 0.94 : 0.46),
+    );
+    painter.paint(
+      canvas,
+      Offset(origin.dx + width / 2 - painter.width / 2, origin.dy + 4),
+    );
+  }
+
+  void _drawLabel(
+    Canvas canvas,
+    String text,
+    Offset center,
+    Color color,
+    bool selected,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: selected ? 12 : 10,
+          fontWeight: selected ? FontWeight.w900 : FontWeight.w800,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(maxWidth: selected ? 92 : 68);
+    final origin = Offset(
+      center.dx - painter.width / 2,
+      center.dy - painter.height / 2,
+    );
+    if (selected) {
+      final bubble = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          origin.dx - 7,
+          origin.dy - 4,
+          painter.width + 14,
+          painter.height + 8,
+        ),
+        const Radius.circular(999),
+      );
+      canvas.drawRRect(
+        bubble,
+        Paint()..color = Colors.white.withValues(alpha: 0.96),
+      );
+      canvas.drawRRect(
+        bubble,
+        Paint()
+          ..color = KangColors.line
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1,
+      );
+    }
+    painter.paint(canvas, origin);
+  }
+
+  void _drawFloatingStation(Canvas canvas, Size size) {
+    final point = Offset(size.width * 0.50, size.height * 0.56);
+    final color = _subwayColorForLine(activeLine, KangColors.deepPurple);
+    canvas.drawCircle(
+      point,
+      8,
+      Paint()..color = Colors.white.withValues(alpha: 0.98),
+    );
+    canvas.drawCircle(
+      point,
+      8,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+    _drawLabel(
+      canvas,
+      activeStation,
+      point.translate(0, -26),
+      KangColors.ink,
+      true,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SubwayMapPainter oldDelegate) {
+    return oldDelegate.activeLine != activeLine ||
+        oldDelegate.activeStation != activeStation ||
+        oldDelegate.highlightAll != highlightAll;
+  }
+}
+
+// ignore: unused_element
+class _SubwayHero extends StatelessWidget {
+  const _SubwayHero({required this.dataset, required this.color});
+
+  final SubwayOverviewDataset dataset;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: KangColors.deepPurple,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.train_rounded, color: color, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${dataset.summary.station}역',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${dataset.summary.line} · ${dataset.cacheSeconds}초 캐시 · 서울시 실시간',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.72),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _FinancialLiveBadge(color: color),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _FinancialHeroMetric(
+                width: 150,
+                label: '도착 정보',
+                value: '${dataset.summary.arrivalCount}건',
+                changeText: '역 기준',
+                changeValue: 0,
+                icon: Icons.schedule_rounded,
+                accent: color,
+              ),
+              _FinancialHeroMetric(
+                width: 150,
+                label: '열차 위치',
+                value: '${dataset.summary.trainCount}건',
+                changeText: '호선 기준',
+                changeValue: 0,
+                icon: Icons.route_rounded,
+                accent: KangColors.mint,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _SubwayFavoriteBar extends StatelessWidget {
+  const _SubwayFavoriteBar({
+    required this.favorites,
+    required this.station,
+    required this.line,
+    required this.color,
+    required this.onSelected,
+  });
+
+  final List<SubwayFavoriteStation> favorites;
+  final String station;
+  final String line;
+  final Color color;
+  final ValueChanged<SubwayFavoriteStation> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final favorite in favorites)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                avatar: Icon(
+                  Icons.train_outlined,
+                  size: 16,
+                  color: favorite.station == station && favorite.line == line
+                      ? Colors.white
+                      : color,
+                ),
+                label: Text(favorite.label),
+                selected: favorite.station == station && favorite.line == line,
+                selectedColor: color,
+                labelStyle: TextStyle(
+                  color: favorite.station == station && favorite.line == line
+                      ? Colors.white
+                      : KangColors.ink,
+                  fontWeight: FontWeight.w800,
+                ),
+                onSelected: (_) => onSelected(favorite),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _SubwayArrivalTile extends StatelessWidget {
+  const _SubwayArrivalTile({required this.arrival, required this.color});
+
+  final SubwayArrival arrival;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final lineColor = _colorFromHex(arrival.lineColor, color);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.9)),
+        boxShadow: [
+          BoxShadow(
+            color: lineColor.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SubwayLineBadge(line: arrival.line, color: lineColor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      arrival.trainLine.isEmpty
+                          ? '${arrival.destination}행'
+                          : arrival.trainLine,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        arrival.direction,
+                        if (arrival.trainNo.isNotEmpty) '열차 ${arrival.trainNo}',
+                        _formatSubwayTime(arrival.receivedAt),
+                      ].where((value) => value.isNotEmpty).join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _FinancialChangePill(
+                value: null,
+                text: _formatSubwayEta(arrival.etaSeconds),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: lineColor.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.notifications_active_outlined, color: lineColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    arrival.arrivalMessage.isEmpty
+                        ? arrival.status
+                        : arrival.arrivalMessage,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: lineColor,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _SubwayTrainTile extends StatelessWidget {
+  const _SubwayTrainTile({required this.train, required this.color});
+
+  final SubwayTrainPosition train;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final lineColor = _colorFromHex(train.lineColor, color);
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _SubwayLineBadge(line: train.line, color: lineColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  train.station,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: KangColors.ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              _StatusPill(text: train.status, color: lineColor),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${train.destination}행',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: KangColors.ink),
+          ),
+          const Spacer(),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _StatusPill(text: '열차 ${train.trainNo}', color: color),
+              if (train.isExpress) _StatusPill(text: '급행', color: Colors.red),
+              if (train.isLastTrain) _StatusPill(text: '막차', color: Colors.red),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubwayLineBadge extends StatelessWidget {
+  const _SubwayLineBadge({required this.line, required this.color});
+
+  final String line;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 46),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        line.isEmpty ? '-' : line,
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
@@ -3755,6 +6273,20 @@ String _formatFxRate(double? value) {
   return _trimDecimal(value, digits: digits);
 }
 
+String _formatFxChange(double? value, double? rate) {
+  if (value == null) {
+    return '-';
+  }
+  final absoluteRate = (rate ?? value).abs();
+  final digits = absoluteRate >= 100
+      ? 2
+      : absoluteRate >= 10
+      ? 3
+      : 4;
+  final sign = value > 0 ? '+' : '';
+  return '$sign${_trimDecimal(value, digits: digits)}';
+}
+
 String _formatMarketQuotePrice(double? value) {
   if (value == null) {
     return '-';
@@ -3776,6 +6308,132 @@ String _formatSignedPercent(double? value) {
   }
   final sign = value > 0 ? '+' : '';
   return '$sign${_trimDecimal(value, digits: 2)}%';
+}
+
+String _formatSubwayEta(int? seconds) {
+  if (seconds == null) {
+    return '도착 확인';
+  }
+  if (seconds <= 0) {
+    return '곧 도착';
+  }
+  final minutes = seconds ~/ 60;
+  final remainder = seconds % 60;
+  if (minutes <= 0) {
+    return '$remainder초';
+  }
+  return '$minutes분 $remainder초';
+}
+
+List<MapEntry<String, List<SubwayArrival>>> _groupSubwayArrivalsByDirection(
+  List<SubwayArrival> arrivals,
+) {
+  final groups = <String, List<SubwayArrival>>{
+    '상행': <SubwayArrival>[],
+    '하행': <SubwayArrival>[],
+  };
+  for (final arrival in arrivals) {
+    groups[_subwayDirectionKey(arrival)]!.add(arrival);
+  }
+  return groups.entries.toList(growable: false);
+}
+
+String _subwayDirectionKey(SubwayArrival arrival) {
+  final haystack = [
+    arrival.direction,
+    arrival.trainLine,
+    arrival.arrivalMessage,
+  ].join(' ');
+  if (haystack.contains('하행') ||
+      haystack.contains('하선') ||
+      haystack.contains('내선')) {
+    return '하행';
+  }
+  return '상행';
+}
+
+bool _isSubwayDirection(SubwayArrival arrival, String direction) {
+  return _subwayDirectionKey(arrival) == direction;
+}
+
+String _formatSubwayDirectionTitle(String direction) {
+  if (direction == '상행' || direction == '하행') {
+    return '$direction방향';
+  }
+  return direction.isEmpty ? '방향 확인' : '$direction 방면';
+}
+
+String _formatSubwayArrivalEta(SubwayArrival arrival) {
+  final seconds = arrival.etaSeconds;
+  if (seconds != null && seconds > 0) {
+    final minutes = seconds ~/ 60;
+    if (minutes <= 0) {
+      return '$seconds초';
+    }
+    return '$minutes분';
+  }
+  if (arrival.status == '도착' || arrival.arrivalMessage.contains('도착')) {
+    return '도착';
+  }
+  if (arrival.arrivalMessage.contains('진입')) {
+    return '진입';
+  }
+  return '확인중';
+}
+
+Color _subwayArrivalEtaColor(SubwayArrival arrival, Color fallback) {
+  final seconds = arrival.etaSeconds;
+  if (seconds == null) {
+    return fallback;
+  }
+  if (seconds <= 120) {
+    return Colors.red.shade600;
+  }
+  return fallback;
+}
+
+String _formatSubwayTime(String value) {
+  if (value.isEmpty) {
+    return '';
+  }
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) {
+    return value;
+  }
+  final hour = parsed.hour.toString().padLeft(2, '0');
+  final minute = parsed.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
+}
+
+Color _colorFromHex(String value, Color fallback) {
+  final normalized = value.trim().replaceFirst('#', '');
+  if (normalized.length != 6) {
+    return fallback;
+  }
+  final colorValue = int.tryParse(normalized, radix: 16);
+  if (colorValue == null) {
+    return fallback;
+  }
+  return Color(0xFF000000 | colorValue);
+}
+
+Color _subwayColorForLine(String line, Color fallback) {
+  return switch (line) {
+    '1호선' => const Color(0xFF0052A4),
+    '2호선' => const Color(0xFF00A84D),
+    '3호선' => const Color(0xFFEF7C1C),
+    '4호선' => const Color(0xFF00A5DE),
+    '5호선' => const Color(0xFF996CAC),
+    '6호선' => const Color(0xFFCD7C2F),
+    '7호선' => const Color(0xFF747F00),
+    '8호선' => const Color(0xFFE6186C),
+    '9호선' => const Color(0xFFBDB092),
+    '신분당선' => const Color(0xFFD4003B),
+    '공항철도' => const Color(0xFF0090D2),
+    '경의중앙선' => const Color(0xFF77C4A3),
+    '수인분당선' => const Color(0xFFF5A200),
+    _ => fallback,
+  };
 }
 
 String _trimDecimal(num value, {int digits = 2}) {
@@ -4532,6 +7190,8 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
   String? _message;
   List<GoogleDriveSheetFile> _files = const [];
   List<GoogleDriveTableRowData> _rows = const [];
+  final Set<String> _loadingSheetFileIds = {};
+  final Set<String> _loadedSheetFileIds = {};
 
   @override
   void initState() {
@@ -4567,6 +7227,9 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
       }
       setState(() {
         _files = files;
+        _selectedFileId = null;
+        _loadingSheetFileIds.clear();
+        _loadedSheetFileIds.clear();
         _message = files.isEmpty
             ? 'Google Drive에서 Google Sheet 파일을 찾지 못했습니다.'
             : 'Google Sheet ${files.length}개를 불러왔습니다.';
@@ -4618,6 +7281,52 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
 
   String _sheetKey(GoogleDriveSheetFile file, String sheetName) {
     return '${file.id}::$sheetName';
+  }
+
+  Future<void> _toggleFile(GoogleDriveSheetFile file) async {
+    final willSelect = _selectedFileId != file.id;
+    setState(() {
+      _selectedFileId = willSelect ? file.id : null;
+      _error = null;
+    });
+
+    if (willSelect && !_loadedSheetFileIds.contains(file.id)) {
+      await _loadSheetNames(file);
+    }
+  }
+
+  Future<void> _loadSheetNames(GoogleDriveSheetFile file) async {
+    if (_loadingSheetFileIds.contains(file.id)) {
+      return;
+    }
+
+    setState(() => _loadingSheetFileIds.add(file.id));
+
+    try {
+      final sheetNames = await _driveApi.listSheetNames(file);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _files = [
+          for (final item in _files)
+            if (item.id == file.id)
+              item.copyWith(sheetNames: sheetNames)
+            else
+              item,
+        ];
+        _loadedSheetFileIds.add(file.id);
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _error = _driveErrorMessage(error));
+    } finally {
+      if (mounted) {
+        setState(() => _loadingSheetFileIds.remove(file.id));
+      }
+    }
   }
 
   Future<void> _loadRows() async {
@@ -4825,18 +7534,16 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
                       color: widget.module.accent,
                       selected: _selectedFileId == file.id,
                       disabled: _importingSheetKey != null,
-                      onTap: () {
-                        setState(() {
-                          _selectedFileId = _selectedFileId == file.id
-                              ? null
-                              : file.id;
-                        });
-                      },
+                      loadingSheets: _loadingSheetFileIds.contains(file.id),
+                      loadedSheets: _loadedSheetFileIds.contains(file.id),
+                      onTap: () => _toggleFile(file),
                     ),
                     if (_selectedFileId == file.id)
                       _DriveSheetList(
                         file: file,
                         color: widget.module.accent,
+                        loading: _loadingSheetFileIds.contains(file.id),
+                        loaded: _loadedSheetFileIds.contains(file.id),
                         importingSheetKey: _importingSheetKey,
                         disabled: _importingSheetKey != null,
                         sheetKeyFor: (sheetName) => _sheetKey(file, sheetName),
@@ -4868,6 +7575,13 @@ class _DriveFeaturePanelState extends State<_DriveFeaturePanel> {
 
   String _driveErrorMessage(Object error) {
     final message = error.toString();
+    final lowerMessage = message.toLowerCase();
+    if (lowerMessage.contains('connection abort') ||
+        lowerMessage.contains('connection closed') ||
+        lowerMessage.contains('clientexception') ||
+        lowerMessage.contains('socketexception')) {
+      return 'Google Drive 연결이 일시적으로 끊겼습니다. 잠시 후 다시 시도해 주세요.';
+    }
     return message
         .replaceFirst('ApiException: ', '')
         .replaceFirst('FirebaseAuthException: ', '')
@@ -4881,6 +7595,8 @@ class _DriveFileTile extends StatelessWidget {
     required this.color,
     required this.selected,
     required this.disabled,
+    required this.loadingSheets,
+    required this.loadedSheets,
     required this.onTap,
   });
 
@@ -4888,6 +7604,8 @@ class _DriveFileTile extends StatelessWidget {
   final Color color;
   final bool selected;
   final bool disabled;
+  final bool loadingSheets;
+  final bool loadedSheets;
   final VoidCallback onTap;
 
   @override
@@ -4944,9 +7662,11 @@ class _DriveFileTile extends StatelessWidget {
                       _DriveNameLine(label: '드라이브명', value: file.displayName),
                       _DriveNameLine(
                         label: 'Sheet 탭',
-                        value: file.sheetNames.isEmpty
-                            ? '0개'
-                            : '${file.sheetNames.length}개',
+                        value: loadingSheets
+                            ? '확인 중'
+                            : loadedSheets
+                            ? '${file.sheetNames.length}개'
+                            : '선택 시 확인',
                       ),
                       if (file.modifiedTime != null)
                         Padding(
@@ -4964,7 +7684,9 @@ class _DriveFileTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Icon(
-                  selected
+                  loadingSheets
+                      ? Icons.sync_rounded
+                      : selected
                       ? Icons.keyboard_arrow_up_rounded
                       : Icons.keyboard_arrow_down_rounded,
                   color: KangColors.slate,
@@ -4982,6 +7704,8 @@ class _DriveSheetList extends StatelessWidget {
   const _DriveSheetList({
     required this.file,
     required this.color,
+    required this.loading,
+    required this.loaded,
     required this.importingSheetKey,
     required this.disabled,
     required this.sheetKeyFor,
@@ -4990,6 +7714,8 @@ class _DriveSheetList extends StatelessWidget {
 
   final GoogleDriveSheetFile file;
   final Color color;
+  final bool loading;
+  final bool loaded;
   final String? importingSheetKey;
   final bool disabled;
   final String Function(String sheetName) sheetKeyFor;
@@ -4997,20 +7723,35 @@ class _DriveSheetList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (loading) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 50, right: 4, bottom: 12),
+        child: _CalendarMessage(
+          icon: Icons.sync_rounded,
+          text: '${file.displayName}의 Sheet 탭을 확인하고 있습니다.',
+          color: color,
+        ),
+      );
+    }
+
     if (file.sheetNames.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(left: 50, right: 4, bottom: 12),
+      return Padding(
+        padding: const EdgeInsets.only(left: 50, right: 4, bottom: 12),
         child: _CalendarMessage(
           icon: Icons.table_chart_outlined,
-          text: '이 파일에서 Sheet 탭 정보를 찾지 못했습니다.',
+          text: loaded
+              ? '이 파일에서 Sheet 탭 정보를 찾지 못했습니다.'
+              : 'Sheet 탭을 확인하려면 파일을 다시 선택해 주세요.',
           color: KangColors.slate,
         ),
       );
     }
 
+    final compact = MediaQuery.sizeOf(context).width < 520;
+
     return Container(
-      margin: const EdgeInsets.only(left: 50, right: 4, bottom: 12),
-      padding: const EdgeInsets.all(12),
+      margin: EdgeInsets.only(left: compact ? 0 : 50, right: 4, bottom: 12),
+      padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
@@ -5026,7 +7767,7 @@ class _DriveSheetList extends StatelessWidget {
               Expanded(
                 child: Text(
                   '${file.displayName} Sheets',
-                  maxLines: 1,
+                  maxLines: compact ? 2 : 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(
                     context,
@@ -5068,59 +7809,89 @@ class _DriveSheetTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KangColors.line),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 340;
+        final title = Row(
+          children: [
+            Container(
+              width: compact ? 40 : 34,
+              height: compact ? 40 : 34,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.grid_on_rounded, size: 19, color: color),
             ),
-            child: Icon(Icons.grid_on_rounded, size: 18, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              sheetName,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: KangColors.ink,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                sheetName,
+                maxLines: compact ? 3 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: KangColors.ink,
+                  fontSize: compact ? 17 : 16,
+                  fontWeight: FontWeight.w900,
+                  height: 1.22,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(112, 42),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+          ],
+        );
+
+        final button = FilledButton.icon(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(112, 46),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
             ),
-            icon: importing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.download_rounded),
-            label: const Text('가져오기'),
-            onPressed: importing || disabled ? null : onImport,
           ),
-        ],
-      ),
+          icon: importing
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.download_rounded, size: 21),
+          label: const Text('가져오기'),
+          onPressed: importing || disabled ? null : onImport,
+        );
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 12 : 12,
+            vertical: compact ? 12 : 10,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: KangColors.line),
+          ),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    title,
+                    const SizedBox(height: 10),
+                    SizedBox(width: double.infinity, child: button),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: title),
+                    const SizedBox(width: 10),
+                    button,
+                  ],
+                ),
+        );
+      },
     );
   }
 }
@@ -7435,5 +10206,6 @@ enum _HomeModuleKind {
   university,
   marketCap,
   financial,
+  subway,
   placeholder,
 }

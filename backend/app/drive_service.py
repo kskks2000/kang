@@ -21,6 +21,8 @@ SHEET_VALUE_ROW_CHUNK_SIZE = 5000
 MAX_SHEET_ROWS_TO_IMPORT = 100000
 GOOGLE_GET_RETRY_COUNT = 3
 GOOGLE_TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
+DRIVE_LIST_TIMEOUT_SECONDS = 12
+DRIVE_SHEET_NAMES_TIMEOUT_SECONDS = 15
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,7 @@ def list_google_sheet_files(
     access_token: str,
     query: str | None,
     page_size: int,
+    include_sheet_names: bool = False,
 ) -> list[dict[str, Any]]:
     search_parts = [
         f"mimeType='{GOOGLE_SHEETS_MIME_TYPE}'",
@@ -70,19 +73,22 @@ def list_google_sheet_files(
         escaped_query = query.replace("\\", "\\\\").replace("'", "\\'")
         search_parts.append(f"name contains '{escaped_query}'")
 
-    response = requests.get(
-        DRIVE_FILES_URL,
-        params={
-            "q": " and ".join(search_parts),
-            "pageSize": str(page_size),
-            "orderBy": "name_natural",
-            "fields": "files(id,name,parents,modifiedTime,webViewLink)",
-            "includeItemsFromAllDrives": "true",
-            "supportsAllDrives": "true",
-        },
-        headers=_auth_headers(access_token),
-        timeout=20,
-    )
+    try:
+        response = _google_get(
+            DRIVE_FILES_URL,
+            params={
+                "q": " and ".join(search_parts),
+                "pageSize": str(page_size),
+                "orderBy": "name_natural",
+                "fields": "files(id,name,parents,modifiedTime,webViewLink)",
+                "includeItemsFromAllDrives": "true",
+                "supportsAllDrives": "true",
+            },
+            headers=_auth_headers(access_token),
+            timeout=DRIVE_LIST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        _raise_google_connection_error("Google Drive", exc)
     _raise_for_google_error(response, service_name="Google Drive")
 
     payload = response.json()
@@ -90,14 +96,7 @@ def list_google_sheet_files(
     if not isinstance(files, list):
         return []
 
-    parent_ids = {
-        parent_id
-        for item in files
-        if isinstance(item, dict)
-        for parent_id in [_first_parent_id(item)]
-        if parent_id
-    }
-    folder_names = _load_drive_file_names(access_token=access_token, file_ids=parent_ids)
+    folder_names: dict[str, str] = {}
 
     sheet_files: list[dict[str, Any]] = []
     for item in files:
@@ -111,10 +110,12 @@ def list_google_sheet_files(
                 "id": file_id,
                 "name": str(item.get("name") or "Untitled sheet"),
                 "folder_name": folder_names.get(parent_id) if parent_id else None,
-                "sheet_names": _safe_load_sheet_titles(
+                "sheet_names": list_google_sheet_names(
                     access_token=access_token,
                     file_id=file_id,
-                ),
+                )
+                if include_sheet_names
+                else [],
                 "modified_time": item.get("modifiedTime"),
                 "web_view_link": item.get("webViewLink"),
             }
@@ -128,6 +129,17 @@ def list_google_sheet_files(
         )
     )
     return sheet_files
+
+
+def list_google_sheet_names(*, access_token: str, file_id: str) -> list[str]:
+    try:
+        return _load_sheet_titles(
+            access_token=access_token,
+            file_id=file_id,
+            timeout=DRIVE_SHEET_NAMES_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        _raise_google_connection_error("Google Sheets", exc)
 
 
 def import_google_sheet(
@@ -257,12 +269,17 @@ def list_google_drive_rows(
         return [dict(row) for row in cur.fetchall()]
 
 
-def _load_sheet_infos(*, access_token: str, file_id: str) -> list[SheetInfo]:
+def _load_sheet_infos(
+    *,
+    access_token: str,
+    file_id: str,
+    timeout: int = 20,
+) -> list[SheetInfo]:
     response = _google_get(
         SHEETS_SPREADSHEET_URL.format(file_id=file_id),
         params={"fields": "sheets.properties(title,gridProperties.rowCount)"},
         headers=_auth_headers(access_token),
-        timeout=20,
+        timeout=timeout,
     )
     _raise_for_google_error(response, service_name="Google Sheets")
 
@@ -289,10 +306,19 @@ def _load_sheet_infos(*, access_token: str, file_id: str) -> list[SheetInfo]:
     return sheet_infos
 
 
-def _load_sheet_titles(*, access_token: str, file_id: str) -> list[str]:
+def _load_sheet_titles(
+    *,
+    access_token: str,
+    file_id: str,
+    timeout: int = 20,
+) -> list[str]:
     return [
         sheet.title
-        for sheet in _load_sheet_infos(access_token=access_token, file_id=file_id)
+        for sheet in _load_sheet_infos(
+            access_token=access_token,
+            file_id=file_id,
+            timeout=timeout,
+        )
     ]
 
 
@@ -590,6 +616,7 @@ def _google_get(
     retry_count: int = GOOGLE_GET_RETRY_COUNT,
 ) -> requests.Response:
     last_response: requests.Response | None = None
+    last_error: requests.RequestException | None = None
     for attempt in range(retry_count):
         try:
             response = requests.get(
@@ -598,7 +625,8 @@ def _google_get(
                 headers=headers,
                 timeout=timeout,
             )
-        except requests.Timeout:
+        except requests.RequestException as exc:
+            last_error = exc
             if attempt == retry_count - 1:
                 raise
             time.sleep(1.5 * (attempt + 1))
@@ -610,9 +638,21 @@ def _google_get(
         if attempt < retry_count - 1:
             time.sleep(1.5 * (attempt + 1))
 
+    if last_error is not None:
+        raise last_error
     if last_response is None:
-        raise requests.Timeout("Google API request timed out.")
+        raise requests.Timeout("Google API request failed before receiving a response.")
     return last_response
+
+
+def _raise_google_connection_error(service_name: str, exc: requests.RequestException) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=(
+            f"{service_name} 연결이 일시적으로 실패했습니다. "
+            "잠시 후 다시 시도해 주세요."
+        ),
+    ) from exc
 
 
 def _raise_for_google_error(response: requests.Response, *, service_name: str) -> None:

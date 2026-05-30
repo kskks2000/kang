@@ -265,7 +265,12 @@ class ExchangeRate {
     required this.quote,
     required this.rate,
     required this.usdBaseRate,
+    required this.previousRate,
+    required this.change,
+    required this.changePercent,
     required this.date,
+    required this.marketTime,
+    required this.sourceSymbol,
   });
 
   final String pair;
@@ -274,7 +279,12 @@ class ExchangeRate {
   final String quote;
   final double rate;
   final double usdBaseRate;
+  final double? previousRate;
+  final double? change;
+  final double? changePercent;
   final String date;
+  final String marketTime;
+  final String sourceSymbol;
 
   factory ExchangeRate.fromJson(Map<String, dynamic> json) {
     return ExchangeRate(
@@ -284,7 +294,12 @@ class ExchangeRate {
       quote: json['quote'] as String? ?? '',
       rate: _doubleOrNull(json['rate']) ?? 0,
       usdBaseRate: _doubleOrNull(json['usdBaseRate']) ?? 0,
+      previousRate: _doubleOrNull(json['previousRate']),
+      change: _doubleOrNull(json['change']),
+      changePercent: _doubleOrNull(json['changePercent']),
       date: json['date'] as String? ?? '',
+      marketTime: json['marketTime'] as String? ?? '',
+      sourceSymbol: json['sourceSymbol'] as String? ?? '',
     );
   }
 }

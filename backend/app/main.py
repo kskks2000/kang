@@ -10,12 +10,14 @@ from .db import get_db
 from .drive_service import (
     import_google_sheet,
     list_google_drive_rows,
+    list_google_sheet_names,
     list_google_sheet_files,
     user_id_from_claims,
 )
 from .financial_market_service import load_financial_markets
 from .firebase_auth import verify_firebase_id_token
 from .market_cap_service import load_global_market_cap_top
+from .subway_service import load_subway_overview
 from .schemas import (
     AcademyInfoBasicResponse,
     CalendarEventsRequest,
@@ -26,12 +28,15 @@ from .schemas import (
     DriveImportResponse,
     DriveRowsRequest,
     DriveRowsResponse,
+    DriveSheetNamesRequest,
+    DriveSheetNamesResponse,
     FinancialMarketsResponse,
     FindLoginIdRequest,
     FindLoginIdResponse,
     MarketCapTopResponse,
     SessionRequest,
     SessionResponse,
+    SubwayOverviewResponse,
 )
 from .settings import settings
 
@@ -74,6 +79,11 @@ def financial_markets() -> dict:
     return load_financial_markets()
 
 
+@app.get("/subway/overview", response_model=SubwayOverviewResponse)
+def subway_overview(station: str = "야탑", line: str = "수인분당선") -> dict:
+    return load_subway_overview(station=station, line=line)
+
+
 @app.post("/auth/session", response_model=SessionResponse)
 def create_session(payload: SessionRequest, request: Request) -> dict:
     claims = verify_firebase_id_token(payload.id_token)
@@ -111,8 +121,20 @@ def drive_files(payload: DriveFilesRequest) -> dict:
         access_token=payload.google_access_token,
         query=payload.query,
         page_size=payload.page_size,
+        include_sheet_names=payload.include_sheet_names,
     )
     return {"files": files}
+
+
+@app.post("/drive/sheets", response_model=DriveSheetNamesResponse)
+def drive_sheets(payload: DriveSheetNamesRequest) -> dict:
+    verify_firebase_id_token(payload.id_token)
+    return {
+        "sheet_names": list_google_sheet_names(
+            access_token=payload.google_access_token,
+            file_id=payload.file_id,
+        )
+    }
 
 
 @app.post("/drive/import", response_model=DriveImportResponse)

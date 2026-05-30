@@ -53,6 +53,7 @@ class Settings:
     firebase_project_id: str
     cors_allowed_origins: list[str]
     academyinfo_service_key: str
+    seoul_subway_api_key: str
 
 
 def load_settings() -> Settings:
@@ -94,6 +95,8 @@ def load_settings() -> Settings:
         firebase_project_id=firebase_project_id,
         cors_allowed_origins=_csv(cors_origins),
         academyinfo_service_key=os.getenv("ACADEMYINFO_SERVICE_KEY", "").strip(),
+        seoul_subway_api_key=os.getenv("SEOUL_SUBWAY_API_KEY", "sample").strip()
+        or "sample",
     )
 
 

@@ -9,9 +9,8 @@ import requests
 
 
 TREASURY_URL = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml"
-FRANKFURTER_URL = "https://api.frankfurter.dev/v1/latest"
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-CACHE_SECONDS = 300
+CACHE_SECONDS = 60
 
 TREASURY_MATURITIES = [
     ("1M", "BC_1MONTH", "1개월"),
@@ -25,14 +24,14 @@ TREASURY_MATURITIES = [
 ]
 
 FX_QUOTES = [
-    ("KRW", "USD/KRW", "달러/원"),
-    ("JPY", "USD/JPY", "달러/엔"),
-    ("CNY", "USD/CNY", "달러/위안"),
-    ("EUR", "EUR/USD", "유로/달러"),
-    ("GBP", "GBP/USD", "파운드/달러"),
-    ("CHF", "USD/CHF", "달러/스위스프랑"),
-    ("CAD", "USD/CAD", "달러/캐나다달러"),
-    ("AUD", "AUD/USD", "호주달러/달러"),
+    ("KRW=X", "USD/KRW", "달러/원"),
+    ("JPY=X", "USD/JPY", "달러/엔"),
+    ("CNY=X", "USD/CNY", "달러/위안"),
+    ("EURUSD=X", "EUR/USD", "유로/달러"),
+    ("GBPUSD=X", "GBP/USD", "파운드/달러"),
+    ("CHF=X", "USD/CHF", "달러/스위스프랑"),
+    ("CAD=X", "USD/CAD", "달러/캐나다달러"),
+    ("AUDUSD=X", "AUD/USD", "호주달러/달러"),
 ]
 
 MARKET_SYMBOLS = [
@@ -154,55 +153,47 @@ def _parse_treasury_records(payload: bytes) -> list[dict[str, str]]:
 
 
 def _fetch_exchange_rates() -> list[dict[str, Any]]:
-    symbols = ",".join(code for code, _, _ in FX_QUOTES)
-    response = requests.get(
-        FRANKFURTER_URL,
-        params={"base": "USD", "symbols": symbols},
-        headers={"User-Agent": "KangPrivateHub/1.0 (+https://kang.ai.kr)"},
-        timeout=30,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    rates = payload.get("rates")
-    if not isinstance(rates, dict):
-        raise ValueError("invalid FX response")
-
     result = []
-    for quote, pair, label in FX_QUOTES:
-        value = _safe_float(rates.get(quote))
-        if value is None:
-            continue
-        display_rate = 1 / value if pair in {"EUR/USD", "GBP/USD", "AUD/USD"} else value
-        result.append(
-            {
-                "pair": pair,
-                "label": label,
-                "base": pair.split("/", 1)[0],
-                "quote": pair.split("/", 1)[1],
-                "rate": display_rate,
-                "usdBaseRate": value,
-                "date": payload.get("date") or "",
-            }
-        )
+    for symbol, pair, label in FX_QUOTES:
+        result.append(_fetch_exchange_quote(symbol, pair=pair, label=label))
     return result
 
 
-def _fetch_market_quote(symbol: str, *, name: str, group: str) -> dict[str, Any]:
-    response = requests.get(
-        YAHOO_CHART_URL.format(symbol=symbol),
-        params={"range": "5d", "interval": "1d"},
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=30,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    result = ((payload.get("chart") or {}).get("result") or [None])[0]
-    if not isinstance(result, dict):
-        raise ValueError("invalid chart response")
-
+def _fetch_exchange_quote(symbol: str, *, pair: str, label: str) -> dict[str, Any]:
+    result = _fetch_yahoo_chart(symbol, range_value="1d", interval="1m")
     meta = result.get("meta") or {}
-    price = _safe_float(meta.get("regularMarketPrice"))
-    previous = _safe_float(meta.get("chartPreviousClose"))
+    rate = _safe_float(meta.get("regularMarketPrice")) or _latest_close(result)
+    previous = _safe_float(meta.get("previousClose")) or _safe_float(
+        meta.get("chartPreviousClose"),
+    )
+    change = _diff(rate, previous)
+    change_percent = None
+    if change is not None and previous not in (None, 0):
+        change_percent = change / previous * 100
+    market_time = _timestamp_to_iso(meta.get("regularMarketTime"))
+    return {
+        "pair": pair,
+        "label": label,
+        "base": pair.split("/", 1)[0],
+        "quote": pair.split("/", 1)[1],
+        "rate": rate or 0,
+        "usdBaseRate": rate or 0,
+        "previousRate": previous,
+        "change": change,
+        "changePercent": change_percent,
+        "date": market_time[:10] if market_time else "",
+        "marketTime": market_time,
+        "sourceSymbol": symbol,
+    }
+
+
+def _fetch_market_quote(symbol: str, *, name: str, group: str) -> dict[str, Any]:
+    result = _fetch_yahoo_chart(symbol, range_value="1d", interval="1m")
+    meta = result.get("meta") or {}
+    price = _safe_float(meta.get("regularMarketPrice")) or _latest_close(result)
+    previous = _safe_float(meta.get("previousClose")) or _safe_float(
+        meta.get("chartPreviousClose"),
+    )
     change = _diff(price, previous)
     change_percent = None
     if change is not None and previous not in (None, 0):
@@ -252,14 +243,9 @@ def _dataset_response(
                 "description": "Daily Treasury par yield curve XML feed.",
             },
             {
-                "name": "Frankfurter / European Central Bank",
-                "url": "https://frankfurter.dev/docs",
-                "description": "Daily foreign exchange reference rates.",
-            },
-            {
                 "name": "Yahoo Finance chart data",
-                "url": "https://finance.yahoo.com/commodities/",
-                "description": "Index futures and macro market quotes.",
+                "url": "https://finance.yahoo.com/",
+                "description": "Currency, index futures, commodity and macro market quotes.",
             },
         ],
         "summary": {
@@ -297,6 +283,40 @@ def _diff(left: float | None, right: float | None) -> float | None:
     if left is None or right is None:
         return None
     return left - right
+
+
+def _fetch_yahoo_chart(
+    symbol: str,
+    *,
+    range_value: str,
+    interval: str,
+) -> dict[str, Any]:
+    response = requests.get(
+        YAHOO_CHART_URL.format(symbol=symbol),
+        params={"range": range_value, "interval": interval},
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    result = ((payload.get("chart") or {}).get("result") or [None])[0]
+    if not isinstance(result, dict):
+        raise ValueError("invalid chart response")
+    return result
+
+
+def _latest_close(result: dict[str, Any]) -> float | None:
+    quotes = ((result.get("indicators") or {}).get("quote") or [])
+    if not quotes or not isinstance(quotes[0], dict):
+        return None
+    closes = quotes[0].get("close")
+    if not isinstance(closes, list):
+        return None
+    for value in reversed(closes):
+        close = _safe_float(value)
+        if close is not None:
+            return close
+    return None
 
 
 def _safe_float(value: Any) -> float | None:

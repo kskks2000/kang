@@ -22,6 +22,7 @@ class GoogleDriveApi {
           await FirebaseSocialAuth.requestGoogleDriveSheetsAccessToken(),
       'query': query.trim().isEmpty ? null : query.trim(),
       'page_size': 50,
+      'include_sheet_names': false,
     });
     final json = _decode(response);
     _throwIfFailed(response, json, 'Google Drive 파일을 불러오지 못했습니다.');
@@ -31,6 +32,20 @@ class GoogleDriveApi {
         .map(GoogleDriveSheetFile.fromJson)
         .toList(growable: false);
     return _sortSheetFiles(parsedFiles);
+  }
+
+  Future<List<String>> listSheetNames(GoogleDriveSheetFile file) async {
+    final response = await _postJson('/drive/sheets', {
+      'id_token': await _idToken(),
+      'google_access_token':
+          await FirebaseSocialAuth.requestGoogleDriveSheetsAccessToken(),
+      'file_id': file.id,
+    });
+    final json = _decode(response);
+    _throwIfFailed(response, json, 'Google Sheet 탭 정보를 불러오지 못했습니다.');
+    return (json['sheet_names'] as List<dynamic>? ?? const [])
+        .whereType<String>()
+        .toList(growable: false);
   }
 
   Future<GoogleDriveImportResult> importSheet(
@@ -148,6 +163,22 @@ class GoogleDriveSheetFile {
           .toList(growable: false),
       modifiedTime: json['modified_time'] as String?,
       webViewLink: json['web_view_link'] as String?,
+    );
+  }
+
+  GoogleDriveSheetFile copyWith({
+    String? folderName,
+    List<String>? sheetNames,
+    String? modifiedTime,
+    String? webViewLink,
+  }) {
+    return GoogleDriveSheetFile(
+      id: id,
+      name: name,
+      folderName: folderName ?? this.folderName,
+      sheetNames: sheetNames ?? this.sheetNames,
+      modifiedTime: modifiedTime ?? this.modifiedTime,
+      webViewLink: webViewLink ?? this.webViewLink,
     );
   }
 }
