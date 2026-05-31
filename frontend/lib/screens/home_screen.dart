@@ -10,6 +10,7 @@ import '../models/app_user.dart';
 import '../services/academy_info_api.dart';
 import '../services/firebase_social_auth.dart';
 import '../services/financial_market_api.dart';
+import '../services/google_calendar_launcher.dart';
 import '../services/google_calendar_service.dart';
 import '../services/google_drive_api.dart';
 import '../services/google_keep_service.dart';
@@ -8762,151 +8763,155 @@ class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
       (total, column) => total + column.width,
     );
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KangColors.line),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final naturalHeight =
-              _headingRowHeight + sortedRows.length * _dataRowHeight;
-          final boundedHeight =
-              widget.fillHeight && constraints.hasBoundedHeight
-              ? constraints.maxHeight
-              : math.min(naturalHeight, _maxTableHeight);
-          final tableHeight = math.max(
-            _headingRowHeight + _dataRowHeight,
-            boundedHeight,
-          );
+    return SelectionArea(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: KangColors.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final naturalHeight =
+                _headingRowHeight + sortedRows.length * _dataRowHeight;
+            final boundedHeight =
+                widget.fillHeight && constraints.hasBoundedHeight
+                ? constraints.maxHeight
+                : math.min(naturalHeight, _maxTableHeight);
+            final tableHeight = math.max(
+              _headingRowHeight + _dataRowHeight,
+              boundedHeight,
+            );
 
-          return SizedBox(
-            height: tableHeight,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  width: _firstColumnWidth,
-                  child: Column(
-                    children: [
-                      _gridHeaderCell(
-                        '순번',
-                        width: _firstColumnWidth,
-                        frozen: true,
-                      ),
-                      Expanded(
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            _syncVerticalScroll(
-                              notification,
-                              fromFrozenColumn: true,
-                            );
-                            return false;
-                          },
-                          child: ListView.builder(
-                            controller: _frozenVerticalController,
-                            primary: false,
-                            itemExtent: _dataRowHeight,
-                            itemCount: sortedRows.length,
-                            itemBuilder: (context, index) {
-                              return _gridBodyCell(
-                                _driveRowSequence(sortedRows[index]),
-                                width: _firstColumnWidth,
-                                rowIndex: index,
-                                strong: true,
-                                frozen: true,
-                                label: '순번',
+            return SizedBox(
+              height: tableHeight,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: _firstColumnWidth,
+                    child: Column(
+                      children: [
+                        _gridHeaderCell(
+                          '순번',
+                          width: _firstColumnWidth,
+                          frozen: true,
+                        ),
+                        Expanded(
+                          child: NotificationListener<ScrollNotification>(
+                            onNotification: (notification) {
+                              _syncVerticalScroll(
+                                notification,
+                                fromFrozenColumn: true,
                               );
+                              return false;
                             },
+                            child: ListView.builder(
+                              controller: _frozenVerticalController,
+                              primary: false,
+                              itemExtent: _dataRowHeight,
+                              itemCount: sortedRows.length,
+                              itemBuilder: (context, index) {
+                                return _gridBodyCell(
+                                  _driveRowSequence(sortedRows[index]),
+                                  width: _firstColumnWidth,
+                                  rowIndex: index,
+                                  strong: true,
+                                  frozen: true,
+                                  label: '순번',
+                                );
+                              },
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: Column(
-                    children: [
-                      SizedBox(
-                        height: _headingRowHeight,
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            _syncHorizontalScroll(
-                              notification,
-                              fromHeader: true,
-                            );
-                            return false;
-                          },
-                          child: SingleChildScrollView(
-                            controller: _headerHorizontalController,
-                            scrollDirection: Axis.horizontal,
-                            child: _gridHeaderRow(scrollColumns, scrollWidth),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: _headingRowHeight,
+                          child: NotificationListener<ScrollNotification>(
+                            onNotification: (notification) {
+                              _syncHorizontalScroll(
+                                notification,
+                                fromHeader: true,
+                              );
+                              return false;
+                            },
+                            child: SingleChildScrollView(
+                              controller: _headerHorizontalController,
+                              scrollDirection: Axis.horizontal,
+                              child: _gridHeaderRow(scrollColumns, scrollWidth),
+                            ),
                           ),
                         ),
-                      ),
-                      Expanded(
-                        child: Scrollbar(
-                          controller: _bodyVerticalController,
-                          thumbVisibility: true,
-                          notificationPredicate: (notification) =>
-                              notification.metrics.axis == Axis.vertical,
+                        Expanded(
                           child: Scrollbar(
-                            controller: _bodyHorizontalController,
+                            controller: _bodyVerticalController,
                             thumbVisibility: true,
                             notificationPredicate: (notification) =>
-                                notification.metrics.axis == Axis.horizontal,
-                            child: NotificationListener<ScrollNotification>(
-                              onNotification: (notification) {
-                                _syncHorizontalScroll(
-                                  notification,
-                                  fromHeader: false,
-                                );
-                                return false;
-                              },
-                              child: SingleChildScrollView(
-                                controller: _bodyHorizontalController,
-                                scrollDirection: Axis.horizontal,
-                                child: SizedBox(
-                                  width: scrollWidth,
-                                  child:
-                                      NotificationListener<ScrollNotification>(
-                                        onNotification: (notification) {
-                                          _syncVerticalScroll(
-                                            notification,
-                                            fromFrozenColumn: false,
-                                          );
-                                          return false;
-                                        },
-                                        child: ListView.builder(
-                                          controller: _bodyVerticalController,
-                                          primary: false,
-                                          itemExtent: _dataRowHeight,
-                                          itemCount: sortedRows.length,
-                                          itemBuilder: (context, index) {
-                                            return _gridDataRow(
-                                              sortedRows[index],
-                                              index,
-                                              scrollColumns,
-                                              scrollWidth,
+                                notification.metrics.axis == Axis.vertical,
+                            child: Scrollbar(
+                              controller: _bodyHorizontalController,
+                              thumbVisibility: true,
+                              notificationPredicate: (notification) =>
+                                  notification.metrics.axis == Axis.horizontal,
+                              child: NotificationListener<ScrollNotification>(
+                                onNotification: (notification) {
+                                  _syncHorizontalScroll(
+                                    notification,
+                                    fromHeader: false,
+                                  );
+                                  return false;
+                                },
+                                child: SingleChildScrollView(
+                                  controller: _bodyHorizontalController,
+                                  scrollDirection: Axis.horizontal,
+                                  child: SizedBox(
+                                    width: scrollWidth,
+                                    child:
+                                        NotificationListener<
+                                          ScrollNotification
+                                        >(
+                                          onNotification: (notification) {
+                                            _syncVerticalScroll(
+                                              notification,
+                                              fromFrozenColumn: false,
                                             );
+                                            return false;
                                           },
+                                          child: ListView.builder(
+                                            controller: _bodyVerticalController,
+                                            primary: false,
+                                            itemExtent: _dataRowHeight,
+                                            itemCount: sortedRows.length,
+                                            itemBuilder: (context, index) {
+                                              return _gridDataRow(
+                                                sortedRows[index],
+                                                index,
+                                                scrollColumns,
+                                                scrollWidth,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        },
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -9141,27 +9146,29 @@ class _DriveRowsGridTableState extends State<_DriveRowsGridTable> {
       ),
     );
     final content = canOpenDetail
-        ? Tooltip(
-            message: value,
-            waitDuration: const Duration(milliseconds: 350),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(6),
-              onTap: () => _showCellDetail(label ?? '', value),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-                child: Row(
-                  children: [
-                    Expanded(child: text),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.open_in_full_rounded,
-                      size: 13,
-                      color: widget.color.withValues(alpha: 0.7),
-                    ),
-                  ],
+        ? Row(
+            children: [
+              Expanded(child: text),
+              const SizedBox(width: 4),
+              Tooltip(
+                message: '전체 보기',
+                waitDuration: const Duration(milliseconds: 350),
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 28,
+                    height: 28,
+                  ),
+                  icon: Icon(
+                    Icons.open_in_full_rounded,
+                    size: 14,
+                    color: widget.color.withValues(alpha: 0.82),
+                  ),
+                  onPressed: () => _showCellDetail(label ?? '', value),
                 ),
               ),
-            ),
+            ],
           )
         : text;
 
@@ -9543,6 +9550,26 @@ class _CalendarFeaturePanelState extends State<_CalendarFeaturePanel> {
     return _loadDate(DateTime(now.year, now.month, now.day));
   }
 
+  Future<void> _openCalendar() async {
+    final opened = await openGoogleCalendar(date: _selectedDate);
+    if (!opened && mounted) {
+      _showCalendarLauncherError('Google Calendar를 열 수 없습니다.');
+    }
+  }
+
+  Future<void> _openCalendarCreate() async {
+    final opened = await openGoogleCalendarEventCreate(date: _selectedDate);
+    if (!opened && mounted) {
+      _showCalendarLauncherError('Google Calendar 일정 추가 화면을 열 수 없습니다.');
+    }
+  }
+
+  void _showCalendarLauncherError(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final events = _preview?.events ?? const <GoogleCalendarEvent>[];
@@ -9588,19 +9615,35 @@ class _CalendarFeaturePanelState extends State<_CalendarFeaturePanel> {
               onToday: _goToday,
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              icon: _loading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.sync_rounded),
-              label: Text(connected ? '일정 새로고침' : 'Google Calendar 연결'),
-              onPressed: _loading ? null : _connect,
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilledButton.icon(
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.sync_rounded),
+                  label: Text(connected ? '일정 새로고침' : 'Google Calendar 연결'),
+                  onPressed: _loading ? null : _connect,
+                ),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.open_in_new_rounded),
+                  label: const Text('캘린더 열기'),
+                  onPressed: _openCalendar,
+                ),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('일정 추가'),
+                  onPressed: _openCalendarCreate,
+                ),
+              ],
             ),
             if (_error != null) ...[
               const SizedBox(height: 14),
