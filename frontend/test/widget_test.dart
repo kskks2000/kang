@@ -5,11 +5,11 @@ import 'package:kang_frontend/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('uses Android emulator host when API_BASE_URL is not provided', () {
+  test('uses production API host when API_BASE_URL is not provided', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
 
-    expect(AppConfig.apiBaseUrl, 'http://10.0.2.2:8000');
+    expect(AppConfig.apiBaseUrl, 'https://www.kang.ai.kr');
   });
 
   testWidgets('shows login screen when Firebase is not configured', (

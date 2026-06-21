@@ -1,0 +1,101 @@
+# AGENTS.md
+
+이 문서는 Kang 저장소에서 작업하는 AI 에이전트를 위한 지침입니다. 사람용 프로젝트 안내는 `README.md`에만 둡니다.
+
+## 범위
+
+- 이 파일은 저장소 전체에 적용됩니다.
+- README에는 설치, 실행, 기능 설명처럼 사람이 바로 읽을 정보만 둡니다.
+- 에이전트 작업 규칙, 코드 구조 메모, 검증 체크리스트는 이 파일에 둡니다.
+
+## 프로젝트 구조
+
+- `frontend/`: Flutter 앱입니다. 진입점은 `frontend/lib/main.dart`입니다.
+- `frontend/lib/app_config.dart`: 실행 환경별 API 기본 주소를 결정합니다.
+- `frontend/lib/firebase_options.dart`: Firebase 클라이언트 설정입니다. 현재 프로젝트는 `kang-84cdd`입니다.
+- `scripts/flutter_run_with_env.ps1`: 루트 `.env`와 `backend/.env`를 읽어 Flutter `--dart-define` 값으로 전달합니다.
+- `frontend/lib/screens/`: 화면 단위 UI입니다.
+- `frontend/lib/services/`: 백엔드 및 Google/Firebase 연동 클라이언트입니다.
+- `frontend/lib/theme/`, `frontend/lib/widgets/`: 공통 스타일과 UI 컴포넌트입니다.
+- `backend/`: FastAPI 앱입니다. 로컬 진입점은 `backend/app/main.py`입니다.
+- `backend/main.py`: Firebase Functions 진입점입니다.
+- `backend/app/settings.py`: 환경값 로딩과 DB 연결 제한을 담당합니다.
+- `backend/app/schemas.py`: API 요청/응답 모델입니다.
+- `database/`: 운영 DB 스키마와 마이그레이션 SQL입니다.
+
+## 중요한 계약
+
+- PostgreSQL 연결은 `211.47.74.33/dbkang` 및 사용자 `kang`으로 제한되어 있습니다. `backend/app/settings.py`의 DB 가드를 임의로 완화하지 마세요.
+- `.env`, `backend/.env`, 서비스 계정 JSON, 토큰, 비밀번호는 커밋하지 않습니다.
+- 백엔드는 루트 `.env`를 먼저 읽고 `backend/.env`로 백엔드 전용 값을 덮어씁니다. 이미 프로세스 환경변수로 지정된 값은 덮어쓰지 않습니다.
+- Firebase 인증 이후 프론트엔드는 Firebase ID 토큰을 `POST /auth/session`으로 전달합니다.
+- 로그인 세션 처리는 `kang.users`, `kang.auth_identities`, `kang.user_profiles`, `kang.user_roles`, `kang.login_events`와 맞아야 합니다.
+- API 주소 기본값은 `frontend/lib/app_config.dart`에 있습니다. 모든 플랫폼 기본값은 `https://www.kang.ai.kr`입니다.
+- 완료 처리 전에는 반드시 `https://www.kang.ai.kr`에 배포하고, 같은 도메인에서 직접 동작 확인을 끝내야 합니다. 로컬 실행, 로컬 빌드, 파일 확인만으로 완료 보고하지 마세요.
+- 프론트엔드의 사용자 표시 문구는 현재 한국어 중심입니다. 새 UI도 같은 톤을 유지하세요.
+- Google Calendar, Drive, Sheets, Keep 연동 코드는 권한 범위와 access token 흐름에 민감합니다. 토큰을 영구 저장하거나 로그에 남기지 마세요.
+
+## 개발 명령
+
+백엔드 로컬 실행:
+
+```powershell
+cd D:\kcastle\kang\backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+프론트엔드 로컬 실행:
+
+```powershell
+cd D:\kcastle\kang
+.\scripts\flutter_run_with_env.ps1 -Device chrome
+```
+
+검증:
+
+```powershell
+cd D:\kcastle\kang\frontend
+C:\src\flutter\bin\flutter.bat analyze
+C:\src\flutter\bin\flutter.bat test
+```
+
+백엔드에는 현재 별도 테스트 스위트가 없습니다. 백엔드 변경 후에는 서버를 띄우고 `GET /health` 및 변경한 엔드포인트를 확인하세요.
+
+배포용 웹 빌드:
+
+```powershell
+cd D:\kcastle\kang\frontend
+C:\src\flutter\bin\flutter.bat build web --release `
+  --dart-define=API_BASE_URL=https://www.kang.ai.kr
+```
+
+배포 후 운영 도메인 확인:
+
+```powershell
+Invoke-WebRequest -Uri https://www.kang.ai.kr/health -UseBasicParsing
+```
+
+## 작업 방식
+
+- 변경 전 관련 파일을 먼저 읽고 기존 패턴을 따릅니다.
+- 사용자가 만든 미커밋 변경을 되돌리지 않습니다.
+- 기능 변경은 가능한 한 프론트엔드 서비스, 백엔드 스키마, DB SQL을 함께 맞춥니다.
+- 새 API를 추가할 때는 `backend/app/schemas.py`에 요청/응답 모델을 정의하고 `backend/app/main.py`에서 명시적인 response model을 사용합니다.
+- 외부 API 호출은 `backend/app/*_service.py` 또는 `frontend/lib/services/*`의 기존 스타일을 따릅니다.
+- Flutter UI는 `KangTheme`, 공통 위젯, 기존 화면의 여백/색/상태 처리 방식을 재사용합니다.
+- 문서 변경 시 사람에게 필요한 내용은 `README.md`, 에이전트에게 필요한 내용은 `AGENTS.md`에 분리합니다.
+- 환경변수를 추가하면 `.env.example`, `backend/.env.example`, `README.md`, 필요 시 `scripts/flutter_run_with_env.ps1`의 dart define 목록을 함께 갱신합니다.
+
+## 변경 후 체크리스트
+
+- 프론트엔드 변경: `flutter analyze`와 `flutter test`를 실행합니다.
+- 백엔드 변경: import 오류 없이 `uvicorn app.main:app`이 뜨는지 확인합니다.
+- 인증/DB 변경: `database/` SQL과 백엔드 모델/쿼리가 서로 맞는지 확인합니다.
+- API 주소나 실행 방식 변경: `README.md`와 이 파일을 함께 갱신합니다.
+- 비밀값, 로컬 경로, 개인 토큰이 diff에 포함되지 않았는지 확인합니다.
+- 완료 보고 전: 반드시 `https://www.kang.ai.kr`에 배포합니다.
+- 완료 보고 전: 반드시 `https://www.kang.ai.kr`에서 변경된 화면/API를 직접 테스트하고 결과를 사용자에게 알려줍니다.
+- 완료 보고 전: 로컬 주소 문자열이 소스, 환경 예시, 문서, 배포 산출물에 남아 있지 않은지 확인합니다.

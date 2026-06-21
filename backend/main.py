@@ -4,20 +4,12 @@ from firebase_fastapi_wrapper import FastAPIWrapper
 from firebase_functions import https_fn, options
 
 from app.main import app
+from app.settings import settings
 
 
 _handler = FastAPIWrapper(
     app,
-    cors_origins=[
-        "https://kang-84cdd.web.app",
-        "https://kang-84cdd.firebaseapp.com",
-        "https://www.kang.ai.kr",
-        "https://kang.ai.kr",
-        "http://localhost:5000",
-        "http://localhost:5004",
-        "http://127.0.0.1:5000",
-        "http://127.0.0.1:5004",
-    ],
+    cors_origins=settings.cors_allowed_origins,
     timeout=300,
 )
 

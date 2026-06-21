@@ -1,58 +1,78 @@
 # Kang
 
-Flutter + FastAPI + PostgreSQL foundation for the Kang private app.
+Kang은 Flutter 프론트엔드와 FastAPI 백엔드, PostgreSQL, Firebase Auth를 함께 사용하는 개인용 앱입니다.
 
-## Created parts
+이 문서는 사람이 프로젝트를 이해하고 실행하기 위한 안내입니다. AI 에이전트용 작업 규칙은 [AGENTS.md](AGENTS.md)를 보세요.
 
-- `frontend/`: Flutter app with login, sign-up, ID lookup, password reset, and signed-in home screen.
-- `backend/`: FastAPI server that verifies Firebase ID tokens and creates or updates users.
-- `database/login_auth_schema.sql`: Login/auth schema DDL.
-- `database/seed_default_roles.sql`: Default role seed SQL.
+## 구성
 
-## Backend
+- `frontend/`: Flutter 앱. 로그인, 회원가입, 아이디 찾기, 비밀번호 재설정, 로그인 후 홈 화면을 제공합니다.
+- `backend/`: FastAPI 서버. Firebase ID 토큰을 검증하고 사용자 정보와 외부 데이터 API를 처리합니다.
+- `database/`: 로그인/인증, Google OAuth, Drive 연동 등에 필요한 SQL 스키마와 시드 파일입니다.
+- `firebase.json`: Firebase Hosting과 Python Functions 배포 설정입니다.
 
-The backend loads local environment values from `backend/.env`. DB settings are locked to `211.47.74.33/dbkang` as user `kang`; if another DB is configured through the environment, the API refuses to start.
+## 주요 기능
+
+- Firebase 이메일/비밀번호 및 Google 로그인
+- 로그인 세션 생성과 사용자 정보 저장
+- Google Calendar, Drive, Sheets, Keep 연동 화면
+- 대학 정보, 금융 시장, 글로벌 시가총액, 지하철 정보 조회
+
+## 환경변수
+
+루트의 `.env`에서 공통 환경변수를 관리합니다. 이 파일은 git에 올라가지 않습니다. 처음 설정할 때는 `.env.example`을 참고해서 `.env`를 채우세요.
+
+백엔드는 루트 `.env`를 먼저 읽고, `backend/.env`가 있으면 그 값으로 백엔드 전용 설정을 덮어씁니다. 기존처럼 민감한 DB 비밀번호나 서비스 계정 경로를 `backend/.env`에만 두어도 됩니다.
+
+프론트엔드는 Flutter 특성상 `.env`를 직접 읽지 않고 `--dart-define`으로 값을 받습니다. `scripts/flutter_run_with_env.ps1`가 `.env`를 읽어서 필요한 값을 자동으로 넘깁니다.
+
+## 백엔드 실행
+
+PostgreSQL 연결은 `211.47.74.33/dbkang` 데이터베이스와 `kang` 사용자로 제한되어 있으며, 다른 DB로 설정되면 서버가 시작되지 않습니다.
 
 ```powershell
 cd D:\kcastle\kang\backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-$env:GOOGLE_APPLICATION_CREDENTIALS="<firebase service account json path>"
-
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## Android Studio
+주요 백엔드 환경값은 다음과 같습니다.
 
-Open this folder in Android Studio:
+- `DATABASE_URL` 또는 `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+- `KANG_FIREBASE_PROJECT_ID` 또는 `FIREBASE_PROJECT_ID`
+- `GOOGLE_APPLICATION_CREDENTIALS` 또는 `FIREBASE_CREDENTIALS_JSON`
+- `CORS_ALLOWED_ORIGINS`
+- `ACADEMYINFO_SERVICE_KEY`, `SEOUL_SUBWAY_API_KEY`
+- `APP_PUBLIC_URL`, `HTTP_USER_AGENT`, `BROWSER_USER_AGENT`
+- `DEFAULT_SUBWAY_STATION`, `DEFAULT_SUBWAY_LINE`
+- `SFTP_HOST`, `SFTP_PORT`, `SFTP_USERNAME`, `SFTP_PASSWORD`, `SFTP_REMOTE_PATH`
+
+## 프론트엔드 실행
+
+Android Studio에서 다음 폴더를 열고 `lib/main.dart`를 실행합니다.
 
 ```text
 D:\kcastle\kang\frontend
 ```
 
-Use `lib/main.dart` as the entrypoint. The Android emulator uses this API value by default:
-
-```text
-http://10.0.2.2:8000
-```
-
-`10.0.2.2` is the Android emulator address for your PC's local backend. Use `--dart-define=API_BASE_URL=...` only when you run against another backend host. Chrome and desktop default to `http://localhost:8000`.
-
-Firebase client defaults are already set in `frontend/lib/firebase_options.dart` for project `kang-84cdd`.
-
-## Flutter web
+명령줄에서는 `.env`를 읽어 실행하는 스크립트를 사용합니다.
 
 ```powershell
-cd D:\kcastle\kang\frontend
-C:\src\flutter\bin\flutter.bat run -d chrome `
-  --dart-define=API_BASE_URL=http://localhost:8000
+cd D:\kcastle\kang
+.\scripts\flutter_run_with_env.ps1 -Device chrome
 ```
 
-## User Login
+기본 API 주소는 모든 실행 환경에서 `https://www.kang.ai.kr`입니다.
 
-Users can sign up with email and password in the Flutter app. After Firebase authentication succeeds, the backend creates or updates the user in:
+다른 API 서버를 바라보게 하려면 `.env`의 `API_BASE_URL`을 원하는 주소로 바꿔 실행하세요.
+
+Firebase 클라이언트 설정은 `frontend/lib/firebase_options.dart`에 있으며 프로젝트 ID는 `kang-84cdd`입니다.
+
+## 로그인 데이터 흐름
+
+사용자가 Flutter 앱에서 Firebase 인증을 완료하면 앱은 Firebase ID 토큰을 백엔드의 `POST /auth/session`으로 보냅니다. 백엔드는 토큰을 검증한 뒤 다음 테이블을 생성 또는 갱신합니다.
 
 ```text
 kang.users
@@ -61,3 +81,13 @@ kang.user_profiles
 kang.user_roles
 kang.login_events
 ```
+
+## 확인 명령
+
+```powershell
+cd D:\kcastle\kang\frontend
+C:\src\flutter\bin\flutter.bat analyze
+C:\src\flutter\bin\flutter.bat test
+```
+
+백엔드는 현재 별도 테스트 스위트가 없으므로 서버 실행 후 `GET /health`로 기동 상태를 확인합니다.

@@ -8,6 +8,8 @@ from typing import Any
 
 import requests
 
+from .settings import settings
+
 
 SOURCE_URL = "https://companiesmarketcap.com/"
 CACHE_TTL = timedelta(minutes=30)
@@ -39,10 +41,7 @@ def _fetch_companies(*, limit: int) -> list[dict[str, Any]]:
         SOURCE_URL,
         headers={
             "Accept": "text/html,application/xhtml+xml",
-            "User-Agent": (
-                "Mozilla/5.0 (compatible; KangPrivateHub/1.0; "
-                "+https://kang.ai.kr)"
-            ),
+            "User-Agent": settings.browser_user_agent,
         },
         timeout=30,
     )

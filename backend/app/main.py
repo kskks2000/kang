@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -80,7 +82,7 @@ def financial_markets() -> dict:
 
 
 @app.get("/subway/overview", response_model=SubwayOverviewResponse)
-def subway_overview(station: str = "야탑", line: str = "수인분당선") -> dict:
+def subway_overview(station: Optional[str] = None, line: Optional[str] = None) -> dict:
     return load_subway_overview(station=station, line=line)
 
 

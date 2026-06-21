@@ -11,10 +11,7 @@ import requests
 from .settings import settings
 
 
-SEOUL_SUBWAY_BASE_URL = "http://swopenapi.seoul.go.kr/api/subway"
 CACHE_TTL = timedelta(seconds=15)
-DEFAULT_STATION = "야탑"
-DEFAULT_LINE = "수인분당선"
 
 FAVORITE_STATIONS = [
     {"station": "강남", "line": "2호선", "label": "강남"},
@@ -79,12 +76,12 @@ _CACHE: dict[tuple[str, str], tuple[datetime, dict[str, Any]]] = {}
 
 def load_subway_overview(
     *,
-    station: str = DEFAULT_STATION,
-    line: str = DEFAULT_LINE,
+    station: str | None = None,
+    line: str | None = None,
 ) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
-    normalized_station = _clean_query(station) or DEFAULT_STATION
-    normalized_line = _clean_query(line) or DEFAULT_LINE
+    normalized_station = _clean_query(station or "") or settings.default_subway_station
+    normalized_line = _clean_query(line or "") or settings.default_subway_line
     cache_key = (normalized_station, normalized_line)
 
     cached = _CACHE.get(cache_key)
@@ -142,12 +139,13 @@ def _seoul_subway_get(service: str, query: str, *, row_end: int) -> dict[str, An
     if key == "sample":
         row_end = min(row_end, 5)
     url = (
-        f"{SEOUL_SUBWAY_BASE_URL}/{quote(key, safe='')}/json/{service}/1/{row_end}/"
+        f"{settings.seoul_subway_base_url}/{quote(key, safe='')}/json/"
+        f"{service}/1/{row_end}/"
         f"{quote(query, safe='')}"
     )
     response = requests.get(
         url,
-        headers={"User-Agent": "KangPrivateHub/1.0 (+https://kang.ai.kr)"},
+        headers={"User-Agent": settings.http_user_agent},
         timeout=20,
     )
     response.raise_for_status()

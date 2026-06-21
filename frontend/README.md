@@ -10,10 +10,16 @@ D:\kcastle\kang\frontend
 
 Then select an Android emulator, Chrome, or a connected device and run `lib/main.dart`.
 
-Default API hosts:
+For command-line runs, use the repository-level script so `.env` values are passed as Flutter `--dart-define` values:
 
-- Android emulator: `http://10.0.2.2:8000`
-- Chrome, Windows, macOS, Linux, and iOS simulator: `http://localhost:8000`
+```powershell
+cd D:\kcastle\kang
+.\scripts\flutter_run_with_env.ps1 -Device chrome
+```
+
+Default API host:
+
+- All platforms: `https://www.kang.ai.kr`
 
 Override with `--dart-define=API_BASE_URL=<url>` when using a physical device or deployed backend.
 

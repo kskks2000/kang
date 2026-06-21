@@ -7,6 +7,8 @@ import xml.etree.ElementTree as ET
 
 import requests
 
+from .settings import settings
+
 
 TREASURY_URL = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml"
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
@@ -101,7 +103,7 @@ def _fetch_treasury_rates() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
             "data": "daily_treasury_yield_curve",
             "field_tdr_date_value": str(datetime.now(timezone.utc).year),
         },
-        headers={"User-Agent": "KangPrivateHub/1.0 (+https://kang.ai.kr)"},
+        headers={"User-Agent": settings.http_user_agent},
         timeout=30,
     )
     response.raise_for_status()
@@ -294,7 +296,7 @@ def _fetch_yahoo_chart(
     response = requests.get(
         YAHOO_CHART_URL.format(symbol=symbol),
         params={"range": range_value, "interval": interval},
-        headers={"User-Agent": "Mozilla/5.0"},
+        headers={"User-Agent": settings.browser_user_agent},
         timeout=30,
     )
     response.raise_for_status()
