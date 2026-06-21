@@ -201,6 +201,18 @@ class _HomeScreenState extends State<HomeScreen> {
         screenIcon: Icons.train_rounded,
       ),
       _HomeModule(
+        title: '주식 거래',
+        subtitle: '거래 대시보드',
+        status: '준비중',
+        icon: Icons.show_chart_rounded,
+        accent: Color(0xFF15213F),
+        surface: Color(0xFFEFF4FF),
+        kind: _HomeModuleKind.stockTrading,
+        screenTitle: '주식 거래 대시보드',
+        screenSubtitle: '관심종목, 주문, 체결 현황을 연결할 준비 영역',
+        screenIcon: Icons.show_chart_rounded,
+      ),
+      _HomeModule(
         title: '설정',
         subtitle: '계정과 연동',
         status: '준비됨',
@@ -470,6 +482,16 @@ class _ModuleTile extends StatelessWidget {
   }
 
   Future<void> _openModule(BuildContext context) async {
+    if (module.kind == _HomeModuleKind.stockTrading) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => _StockTradingFullScreen(module: module),
+        ),
+      );
+      return;
+    }
+
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => _FeatureScreen(module: module)));
@@ -850,6 +872,9 @@ class _FeaturePanel extends StatelessWidget {
     if (module.kind == _HomeModuleKind.subway) {
       return _SubwayFeaturePanel(module: module);
     }
+    if (module.kind == _HomeModuleKind.stockTrading) {
+      return _StockTradingPlaceholderPanel(module: module);
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1178,6 +1203,1229 @@ class _MarketCapFeaturePanelState extends State<_MarketCapFeaturePanel> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _StockTradingFullScreen extends StatefulWidget {
+  const _StockTradingFullScreen({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  State<_StockTradingFullScreen> createState() =>
+      _StockTradingFullScreenState();
+}
+
+class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
+  var _selectedMarket = _StockTradingMarket.domestic;
+
+  _StockTradingMarketConfig get _config =>
+      _StockTradingMarketConfig.byMarket(_selectedMarket);
+
+  @override
+  Widget build(BuildContext context) {
+    final config = _config;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F7FB),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _StockTradingTopBar(
+              config: config,
+              selectedMarket: _selectedMarket,
+              onMarketChanged: (market) {
+                setState(() => _selectedMarket = market);
+              },
+            ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 1100;
+                  final medium = constraints.maxWidth >= 820;
+                  final padding = constraints.maxWidth < 720 ? 10.0 : 14.0;
+
+                  if (!medium) {
+                    return SingleChildScrollView(
+                      padding: EdgeInsets.all(padding),
+                      child: Column(
+                        children: [
+                          SizedBox(
+                            height: 420,
+                            child: _StockTradingWatchlistPanel(config: config),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 560,
+                            child: _StockTradingMarketBoard(config: config),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 390,
+                            child: _StockTradingOrderPanel(config: config),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 210,
+                            child: _StockTradingExecutionPanel(config: config),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return Padding(
+                    padding: EdgeInsets.all(padding),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: wide ? 292 : 252,
+                          child: _StockTradingWatchlistPanel(config: config),
+                        ),
+                        SizedBox(width: padding),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Expanded(
+                                flex: 6,
+                                child: _StockTradingMarketBoard(config: config),
+                              ),
+                              SizedBox(height: padding),
+                              Expanded(
+                                flex: 3,
+                                child: _StockTradingExecutionPanel(
+                                  config: config,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: padding),
+                        SizedBox(
+                          width: wide ? 336 : 304,
+                          child: _StockTradingOrderPanel(config: config),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StockTradingTopBar extends StatelessWidget {
+  const _StockTradingTopBar({
+    required this.config,
+    required this.selectedMarket,
+    required this.onMarketChanged,
+  });
+
+  final _StockTradingMarketConfig config;
+  final _StockTradingMarket selectedMarket;
+  final ValueChanged<_StockTradingMarket> onMarketChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: KangColors.line)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: '뒤로',
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(width: 4),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: config.color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.show_chart_rounded, color: config.color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '주식 거래 대시보드',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: KangColors.ink,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${config.title} · ${config.description}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: _StockTradingMarketTabs(
+              selected: selectedMarket,
+              onChanged: onMarketChanged,
+            ),
+          ),
+          const SizedBox(width: 12),
+          _StatusPill(text: '데모 구성', color: config.color),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockTradingPanel extends StatelessWidget {
+  const _StockTradingPanel({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.child,
+    this.trailing,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color color;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: KangColors.line)),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 19, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: KangColors.ink,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                ?trailing,
+              ],
+            ),
+          ),
+          Expanded(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockTradingWatchlistPanel extends StatelessWidget {
+  const _StockTradingWatchlistPanel({required this.config});
+
+  final _StockTradingMarketConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    final symbols = config.title == '국내 주식'
+        ? const [
+            ('005930', '삼성전자', '+0.42%'),
+            ('000660', 'SK하이닉스', '-0.18%'),
+            ('035420', 'NAVER', '+1.12%'),
+            ('035720', '카카오', '-0.64%'),
+          ]
+        : const [
+            ('NVDA', 'NVIDIA', '+0.05%'),
+            ('AAPL', 'Apple', '-0.21%'),
+            ('MSFT', 'Microsoft', '+0.38%'),
+            ('TSLA', 'Tesla', '+1.44%'),
+          ];
+
+    return _StockTradingPanel(
+      title: '관심종목',
+      icon: Icons.star_border_rounded,
+      color: config.color,
+      trailing: _StatusPill(text: config.badge, color: config.color),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: Icon(Icons.search_rounded, color: config.color),
+                hintText: '종목명 · 코드 검색',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              itemBuilder: (context, index) {
+                final item = symbols[index];
+                final positive = item.$3.startsWith('+');
+                return Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: config.color.withValues(
+                      alpha: index == 0 ? 0.08 : 0.03,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: config.color.withValues(
+                        alpha: index == 0 ? 0.18 : 0.08,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.$1,
+                              style: const TextStyle(
+                                color: KangColors.ink,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              item.$2,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: KangColors.slate),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        item.$3,
+                        style: TextStyle(
+                          color: positive
+                              ? KangColors.mintDeep
+                              : Colors.red.shade600,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemCount: symbols.length,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockTradingMarketBoard extends StatelessWidget {
+  const _StockTradingMarketBoard({required this.config});
+
+  final _StockTradingMarketConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    return _StockTradingPanel(
+      title: '시세 · 차트 · 호가',
+      icon: Icons.candlestick_chart_rounded,
+      color: config.color,
+      trailing: const Text(
+        '실시간 연결 예정',
+        style: TextStyle(
+          color: KangColors.slate,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 720;
+          final chart = _StockTradingChartPlaceholder(color: config.color);
+          final quote = _StockTradingQuotePlaceholder(config: config);
+
+          if (compact) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  SizedBox(height: 260, child: chart),
+                  const SizedBox(height: 12),
+                  SizedBox(height: 240, child: quote),
+                ],
+              ),
+            );
+          }
+
+          return Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(flex: 7, child: chart),
+                const SizedBox(width: 12),
+                Expanded(flex: 3, child: quote),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StockTradingChartPlaceholder extends StatelessWidget {
+  const _StockTradingChartPlaceholder({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: CustomPaint(
+        painter: _StockTradingChartPainter(color: color),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '차트 영역',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '종목 선택 시 실시간 차트가 표시됩니다.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.66),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StockTradingQuotePlaceholder extends StatelessWidget {
+  const _StockTradingQuotePlaceholder({required this.config});
+
+  final _StockTradingMarketConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = config.title == '국내 주식'
+        ? const [
+            ('매도 3', '72,300'),
+            ('매도 2', '72,200'),
+            ('매도 1', '72,100'),
+            ('매수 1', '72,000'),
+            ('매수 2', '71,900'),
+          ]
+        : const [
+            ('Ask 3', '212.90'),
+            ('Ask 2', '212.75'),
+            ('Ask 1', '212.63'),
+            ('Bid 1', '212.50'),
+            ('Bid 2', '212.41'),
+          ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: config.color.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: config.color.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              '호가 보드',
+              style: TextStyle(
+                color: config.color,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const Divider(height: 1, color: KangColors.line),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(10),
+              itemCount: rows.length,
+              itemBuilder: (context, index) {
+                final row = rows[index];
+                final ask = index < 3;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          row.$1,
+                          style: TextStyle(
+                            color: ask ? Colors.red.shade600 : config.color,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        row.$2,
+                        style: const TextStyle(
+                          color: KangColors.ink,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockTradingOrderPanel extends StatelessWidget {
+  const _StockTradingOrderPanel({required this.config});
+
+  final _StockTradingMarketConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    return _StockTradingPanel(
+      title: '주문 패널',
+      icon: Icons.price_change_outlined,
+      color: config.color,
+      trailing: _StatusPill(text: config.badge, color: config.color),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'buy', label: Text('매수')),
+                ButtonSegment(value: 'sell', label: Text('매도')),
+              ],
+              selected: const {'buy'},
+              onSelectionChanged: (_) {},
+            ),
+            const SizedBox(height: 14),
+            _StockTradingReadonlyField(label: '종목', value: '선택된 종목 없음'),
+            const SizedBox(height: 10),
+            _StockTradingReadonlyField(
+              label: '주문 가격',
+              value: config.title == '국내 주식' ? '0 KRW' : '0 USD',
+            ),
+            const SizedBox(height: 10),
+            _StockTradingReadonlyField(label: '수량', value: '0'),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              icon: const Icon(Icons.lock_outline_rounded),
+              label: const Text('거래 API 연결 전'),
+              onPressed: null,
+            ),
+            const SizedBox(height: 12),
+            _CalendarMessage(
+              icon: Icons.security_rounded,
+              text: '실제 주문 연결 전에는 주문 버튼을 비활성화합니다.',
+              color: config.color,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StockTradingReadonlyField extends StatelessWidget {
+  const _StockTradingReadonlyField({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      enabled: false,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: value,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+}
+
+class _StockTradingExecutionPanel extends StatelessWidget {
+  const _StockTradingExecutionPanel({required this.config});
+
+  final _StockTradingMarketConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    return _StockTradingPanel(
+      title: '체결 · 미체결 · 잔고',
+      icon: Icons.receipt_long_outlined,
+      color: config.color,
+      trailing: const Text(
+        '데이터 연결 예정',
+        style: TextStyle(
+          color: KangColors.slate,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Expanded(
+              child: _StockTradingSummaryBox(
+                title: '체결 현황',
+                value: '0건',
+                color: config.color,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _StockTradingSummaryBox(
+                title: '미체결',
+                value: '0건',
+                color: config.color,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _StockTradingSummaryBox(
+                title: config.balanceTitle,
+                value: config.balanceValue,
+                color: config.color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StockTradingSummaryBox extends StatelessWidget {
+  const _StockTradingSummaryBox({
+    required this.title,
+    required this.value,
+    required this.color,
+  });
+
+  final String title;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockTradingChartPainter extends CustomPainter {
+  const _StockTradingChartPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.08)
+      ..strokeWidth = 1;
+    for (var i = 1; i < 5; i++) {
+      final y = size.height * i / 5;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    final linePaint = Paint()
+      ..color = color.withValues(alpha: 0.95)
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+    final path = Path();
+    path.moveTo(0, size.height * 0.68);
+    path.cubicTo(
+      size.width * 0.18,
+      size.height * 0.58,
+      size.width * 0.24,
+      size.height * 0.78,
+      size.width * 0.42,
+      size.height * 0.48,
+    );
+    path.cubicTo(
+      size.width * 0.58,
+      size.height * 0.22,
+      size.width * 0.72,
+      size.height * 0.62,
+      size.width,
+      size.height * 0.34,
+    );
+    canvas.drawPath(path, linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _StockTradingChartPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
+class _StockTradingPlaceholderPanel extends StatefulWidget {
+  const _StockTradingPlaceholderPanel({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  State<_StockTradingPlaceholderPanel> createState() =>
+      _StockTradingPlaceholderPanelState();
+}
+
+class _StockTradingPlaceholderPanelState
+    extends State<_StockTradingPlaceholderPanel> {
+  var _selectedMarket = _StockTradingMarket.domestic;
+
+  _StockTradingMarketConfig get _marketConfig =>
+      _StockTradingMarketConfig.byMarket(_selectedMarket);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final config = _marketConfig;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: widget.module.accent.withValues(alpha: 0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: widget.module.surface,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(widget.module.icon, color: widget.module.accent),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '주식 거래 대시보드',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '국내와 해외 거래 화면을 나누어 붙일 자리입니다.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: KangColors.slate,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _StatusPill(text: '준비중', color: widget.module.accent),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _StockTradingMarketTabs(
+              selected: _selectedMarket,
+              onChanged: (market) => setState(() => _selectedMarket = market),
+            ),
+            const SizedBox(height: 14),
+            _StockTradingMarketHeader(config: config),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 620;
+                final cards = config.items
+                    .map(
+                      (item) => _StockTradingReadyItem(
+                        icon: item.icon,
+                        title: item.title,
+                        value: item.value,
+                        color: config.color,
+                      ),
+                    )
+                    .toList(growable: false);
+
+                final content = [
+                  _StockTradingReadyItem(
+                    icon: Icons.account_balance_wallet_outlined,
+                    title: config.balanceTitle,
+                    value: config.balanceValue,
+                    color: config.color,
+                  ),
+                ];
+
+                if (compact) {
+                  return Column(
+                    children: [
+                      for (final card in [...cards, ...content]) ...[
+                        card,
+                        if (card != [...cards, ...content].last)
+                          const SizedBox(height: 10),
+                      ],
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    for (final card in [...cards, ...content]) ...[
+                      Expanded(child: card),
+                      if (card != [...cards, ...content].last)
+                        const SizedBox(width: 10),
+                    ],
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+            _CalendarMessage(
+              icon: Icons.info_outline_rounded,
+              text:
+                  '${config.title}은 아직 거래 API와 계좌 연동을 연결하지 않았고, 화면 자리만 먼저 준비했습니다.',
+              color: config.color,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _StockTradingMarket { domestic, overseas }
+
+class _StockTradingMarketTabs extends StatelessWidget {
+  const _StockTradingMarketTabs({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final _StockTradingMarket selected;
+  final ValueChanged<_StockTradingMarket> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: KangColors.purpleWash.withValues(alpha: 0.36),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.9)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StockTradingMarketTabButton(
+              selected: selected == _StockTradingMarket.domestic,
+              icon: Icons.account_balance_rounded,
+              title: '국내 주식',
+              subtitle: 'KRX · KOSPI/KOSDAQ',
+              onTap: () => onChanged(_StockTradingMarket.domestic),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: _StockTradingMarketTabButton(
+              selected: selected == _StockTradingMarket.overseas,
+              icon: Icons.public_rounded,
+              title: '해외 주식',
+              subtitle: 'NASDAQ · NYSE',
+              onTap: () => onChanged(_StockTradingMarket.overseas),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockTradingMarketTabButton extends StatelessWidget {
+  const _StockTradingMarketTabButton({
+    required this.selected,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? KangColors.ink : KangColors.slate;
+    return Material(
+      color: selected ? Colors.white : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StockTradingMarketHeader extends StatelessWidget {
+  const _StockTradingMarketHeader({required this.config});
+
+  final _StockTradingMarketConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: config.color.withValues(alpha: 0.055),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: config.color.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(config.icon, color: config.color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  config.title,
+                  style: const TextStyle(
+                    color: KangColors.ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  config.description,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _StatusPill(text: config.badge, color: config.color),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockTradingMarketConfig {
+  const _StockTradingMarketConfig({
+    required this.title,
+    required this.description,
+    required this.badge,
+    required this.icon,
+    required this.color,
+    required this.balanceTitle,
+    required this.balanceValue,
+    required this.items,
+  });
+
+  final String title;
+  final String description;
+  final String badge;
+  final IconData icon;
+  final Color color;
+  final String balanceTitle;
+  final String balanceValue;
+  final List<_StockTradingMarketItem> items;
+
+  static _StockTradingMarketConfig byMarket(_StockTradingMarket market) {
+    return switch (market) {
+      _StockTradingMarket.domestic => const _StockTradingMarketConfig(
+        title: '국내 주식',
+        description: '원화 기준 관심종목, 국내 주문, 체결 현황을 배치할 영역입니다.',
+        badge: 'KRW',
+        icon: Icons.account_balance_rounded,
+        color: Color(0xFF2563EB),
+        balanceTitle: '보유/잔고',
+        balanceValue: '원화 기준',
+        items: [
+          _StockTradingMarketItem(
+            icon: Icons.star_border_rounded,
+            title: '관심종목',
+            value: 'KOSPI · KOSDAQ',
+          ),
+          _StockTradingMarketItem(
+            icon: Icons.price_change_outlined,
+            title: '주문 패널',
+            value: '매수 · 매도',
+          ),
+          _StockTradingMarketItem(
+            icon: Icons.receipt_long_outlined,
+            title: '체결 현황',
+            value: '국내 주문',
+          ),
+        ],
+      ),
+      _StockTradingMarket.overseas => const _StockTradingMarketConfig(
+        title: '해외 주식',
+        description: '달러 기준 관심종목, 해외 주문, 환율/잔고를 배치할 영역입니다.',
+        badge: 'USD',
+        icon: Icons.public_rounded,
+        color: Color(0xFF0F766E),
+        balanceTitle: '환율/잔고',
+        balanceValue: '달러 기준',
+        items: [
+          _StockTradingMarketItem(
+            icon: Icons.star_border_rounded,
+            title: '관심종목',
+            value: 'NASDAQ · NYSE',
+          ),
+          _StockTradingMarketItem(
+            icon: Icons.price_change_outlined,
+            title: '주문 패널',
+            value: 'Buy · Sell',
+          ),
+          _StockTradingMarketItem(
+            icon: Icons.receipt_long_outlined,
+            title: '체결 현황',
+            value: '해외 주문',
+          ),
+        ],
+      ),
+    };
+  }
+}
+
+class _StockTradingMarketItem {
+  const _StockTradingMarketItem({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+}
+
+class _StockTradingReadyItem extends StatelessWidget {
+  const _StockTradingReadyItem({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 19),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: KangColors.ink,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: KangColors.slate),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -10250,5 +11498,6 @@ enum _HomeModuleKind {
   marketCap,
   financial,
   subway,
+  stockTrading,
   placeholder,
 }
