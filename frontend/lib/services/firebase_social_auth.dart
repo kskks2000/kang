@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'google_oauth_token_store.dart';
+
 class FirebaseSocialAuth {
   const FirebaseSocialAuth._();
 
@@ -14,17 +16,37 @@ class FirebaseSocialAuth {
       'https://www.googleapis.com/auth/drive.metadata.readonly';
   static const sheetsReadonlyScope =
       'https://www.googleapis.com/auth/spreadsheets.readonly';
+  static const _googleTokenStoreKey = 'kang.google.oauthToken';
+  static const _calendarTokenStoreKey = 'kang.google.calendarOAuthToken';
+  static const _driveSheetsTokenStoreKey =
+      'kang.google.driveSheetsOAuthToken';
   static String? _googleAccessToken;
   static String? _calendarAccessToken;
   static String? _driveSheetsAccessToken;
 
-  static String? get cachedGoogleAccessToken => _googleAccessToken;
-  static String? get cachedCalendarAccessToken => _calendarAccessToken;
+  static String? get cachedGoogleAccessToken =>
+      _cachedToken(_googleAccessToken, _googleTokenStoreKey);
+  static String? get cachedCalendarAccessToken =>
+      _cachedToken(_calendarAccessToken, _calendarTokenStoreKey);
+  static String? get cachedDriveSheetsAccessToken =>
+      _cachedToken(_driveSheetsAccessToken, _driveSheetsTokenStoreKey);
 
   static void clearCachedGoogleCalendarAccessToken() {
+    clearAllCachedGoogleAccessTokens();
+  }
+
+  static void clearCachedGoogleDriveSheetsAccessToken() {
+    _driveSheetsAccessToken = null;
+    GoogleOAuthTokenStore.remove(_driveSheetsTokenStoreKey);
+  }
+
+  static void clearAllCachedGoogleAccessTokens() {
     _googleAccessToken = null;
     _calendarAccessToken = null;
     _driveSheetsAccessToken = null;
+    GoogleOAuthTokenStore.remove(_googleTokenStoreKey);
+    GoogleOAuthTokenStore.remove(_calendarTokenStoreKey);
+    GoogleOAuthTokenStore.remove(_driveSheetsTokenStoreKey);
   }
 
   static Future<UserCredential> signInWithGoogle({
@@ -58,8 +80,9 @@ class FirebaseSocialAuth {
   static Future<String> requestGoogleCalendarAccessToken({
     bool forceConsent = false,
   }) async {
-    final cachedToken = _calendarAccessToken;
+    final cachedToken = cachedCalendarAccessToken;
     if (cachedToken != null && cachedToken.isNotEmpty) {
+      _calendarAccessToken = cachedToken;
       return cachedToken;
     }
 
@@ -88,6 +111,7 @@ class FirebaseSocialAuth {
     final accessToken = credential.credential?.accessToken;
     if (accessToken != null && accessToken.isNotEmpty) {
       _googleAccessToken = accessToken;
+      GoogleOAuthTokenStore.write(_googleTokenStoreKey, accessToken);
     }
   }
 
@@ -95,6 +119,7 @@ class FirebaseSocialAuth {
     final accessToken = credential.credential?.accessToken;
     if (accessToken != null && accessToken.isNotEmpty) {
       _calendarAccessToken = accessToken;
+      GoogleOAuthTokenStore.write(_calendarTokenStoreKey, accessToken);
     }
   }
 
@@ -102,14 +127,16 @@ class FirebaseSocialAuth {
     final accessToken = credential.credential?.accessToken;
     if (accessToken != null && accessToken.isNotEmpty) {
       _driveSheetsAccessToken = accessToken;
+      GoogleOAuthTokenStore.write(_driveSheetsTokenStoreKey, accessToken);
     }
   }
 
   static Future<String> requestGoogleDriveSheetsAccessToken({
     bool forceConsent = false,
   }) async {
-    final cachedToken = _driveSheetsAccessToken;
+    final cachedToken = cachedDriveSheetsAccessToken;
     if (cachedToken != null && cachedToken.isNotEmpty) {
+      _driveSheetsAccessToken = cachedToken;
       return cachedToken;
     }
 
@@ -131,7 +158,15 @@ class FirebaseSocialAuth {
     }
 
     _driveSheetsAccessToken = accessToken;
+    GoogleOAuthTokenStore.write(_driveSheetsTokenStoreKey, accessToken);
     return accessToken;
+  }
+
+  static String? _cachedToken(String? memoryToken, String storeKey) {
+    if (memoryToken != null && memoryToken.isNotEmpty) {
+      return memoryToken;
+    }
+    return GoogleOAuthTokenStore.read(storeKey);
   }
 
   static GoogleAuthProvider _googleProvider({

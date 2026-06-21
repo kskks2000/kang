@@ -119,6 +119,10 @@ class GoogleDriveApi {
       return;
     }
 
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      FirebaseSocialAuth.clearCachedGoogleDriveSheetsAccessToken();
+    }
+
     final detail = json['detail'];
     throw ApiException(
       detail is String && detail.isNotEmpty ? detail : fallback,
