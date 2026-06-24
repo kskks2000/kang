@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+
+const _firebaseInitTimeout = Duration(seconds: 15);
 
 class FirebaseInitState {
   const FirebaseInitState({required this.ready, this.error});
@@ -20,8 +24,13 @@ class FirebaseBootstrap {
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
-      );
+      ).timeout(_firebaseInitTimeout);
       return const FirebaseInitState(ready: true);
+    } on TimeoutException {
+      return const FirebaseInitState(
+        ready: false,
+        error: 'Firebase 초기화가 지연되고 있습니다. 네트워크 상태를 확인한 뒤 새로고침해 주세요.',
+      );
     } catch (error) {
       return FirebaseInitState(ready: false, error: error.toString());
     }

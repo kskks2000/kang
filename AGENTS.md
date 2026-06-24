@@ -34,6 +34,9 @@
 - 완료 처리 전에는 반드시 `https://www.kang.ai.kr`에 배포하고, 같은 도메인에서 직접 동작 확인을 끝내야 합니다. 로컬 실행, 로컬 빌드, 파일 확인만으로 완료 보고하지 마세요.
 - 프론트엔드의 사용자 표시 문구는 현재 한국어 중심입니다. 새 UI도 같은 톤을 유지하세요.
 - Google Calendar, Drive, Sheets, Keep 연동 코드는 권한 범위와 access token 흐름에 민감합니다. 토큰을 영구 저장하거나 로그에 남기지 마세요.
+- 토스증권 Open API 주문 생성, 정정, 취소는 사용자가 명시적으로 요청한 경우에만 연결합니다. 실제 주문 전송은 Firebase 인증, `TOSSINVEST_TRADING_ENABLED=true`, `TOSSINVEST_TRADING_ALLOWED_EMAILS` 허용 목록, 프론트엔드 최종 확인 모달 또는 정정/취소 확인창을 모두 거쳐야 합니다.
+- `TOSSINVEST_CLIENT_ID`, `TOSSINVEST_CLIENT_SECRET`, `TOSSINVEST_ACCOUNT`, `TOSSINVEST_TRADING_ALLOWED_EMAILS`는 비밀값 또는 개인정보로 취급하고 로그, 문서, diff에 실제 값을 노출하지 마세요.
+- 운영 서버의 공인 IP가 토스증권 Open API 콘솔 허용 IP에 등록되어 있어야 합니다. 운영 확인 중 `IP address not allowed`가 나오면 코드보다 토스 콘솔 IP 허용 목록을 먼저 확인하세요.
 
 ## 개발 명령
 

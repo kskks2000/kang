@@ -21,6 +21,10 @@ def _csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _bool(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def _load_env_file(env_path: Path, *, override: bool, protected_keys: set[str]) -> None:
     if not env_path.exists():
         return
@@ -81,6 +85,12 @@ class Settings:
     sftp_username: str
     sftp_password: str
     sftp_remote_path: str
+    tossinvest_api_base_url: str
+    tossinvest_client_id: str
+    tossinvest_client_secret: str
+    tossinvest_account: str
+    tossinvest_trading_enabled: bool
+    tossinvest_trading_allowed_emails: list[str]
 
 
 def load_settings() -> Settings:
@@ -157,6 +167,20 @@ def load_settings() -> Settings:
         sftp_username=os.getenv("SFTP_USERNAME", "").strip(),
         sftp_password=os.getenv("SFTP_PASSWORD", "").strip(),
         sftp_remote_path=os.getenv("SFTP_REMOTE_PATH", "").strip(),
+        tossinvest_api_base_url=os.getenv(
+            "TOSSINVEST_API_BASE_URL",
+            "https://openapi.tossinvest.com",
+        ).strip()
+        or "https://openapi.tossinvest.com",
+        tossinvest_client_id=os.getenv("TOSSINVEST_CLIENT_ID", "").strip(),
+        tossinvest_client_secret=os.getenv("TOSSINVEST_CLIENT_SECRET", "").strip(),
+        tossinvest_account=os.getenv("TOSSINVEST_ACCOUNT", "").strip(),
+        tossinvest_trading_enabled=_bool(
+            os.getenv("TOSSINVEST_TRADING_ENABLED", ""),
+        ),
+        tossinvest_trading_allowed_emails=[
+            item.lower() for item in _csv(os.getenv("TOSSINVEST_TRADING_ALLOWED_EMAILS", ""))
+        ],
     )
 
 

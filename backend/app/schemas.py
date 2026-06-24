@@ -305,6 +305,182 @@ class FinancialMarketsResponse(BaseModel):
     errors: list[str]
 
 
+class TossInvestSource(BaseModel):
+    title: str
+    provider: str
+    sourceUrl: str
+    specUrl: str
+    description: str
+
+
+class TossInvestDashboardSummary(BaseModel):
+    market: str
+    primarySymbol: str
+    symbolCount: int
+    accountCount: int
+    accountConfigured: bool
+    selectedAccountMasked: Optional[str] = None
+    holdingCount: int
+    openOrderCount: int
+    buyingPowerKrw: Optional[str] = None
+    buyingPowerUsd: Optional[str] = None
+
+
+class TossInvestAccount(BaseModel):
+    accountSeq: Optional[int] = None
+    accountNoMasked: str
+    accountType: str
+    selected: bool
+
+
+class TossInvestStockQuote(BaseModel):
+    symbol: str
+    name: str
+    englishName: str
+    displayName: str
+    market: str
+    currency: str
+    lastPrice: str
+    previousClose: str
+    change: str
+    changePercent: str
+    sharesOutstanding: str
+    marketCap: str
+    timestamp: Optional[str] = None
+
+
+class TossInvestStockSearchItem(BaseModel):
+    symbol: str
+    name: str
+    market: str
+
+
+class TossInvestStockSearchResponse(BaseModel):
+    market: str
+    query: str
+    count: int
+    items: list[TossInvestStockSearchItem]
+
+
+class TossInvestOrderbookEntry(BaseModel):
+    price: str
+    volume: str
+
+
+class TossInvestOrderbook(BaseModel):
+    symbol: str
+    timestamp: Optional[str] = None
+    currency: str
+    asks: list[TossInvestOrderbookEntry]
+    bids: list[TossInvestOrderbookEntry]
+
+
+class TossInvestCandle(BaseModel):
+    timestamp: str
+    openPrice: str
+    highPrice: str
+    lowPrice: str
+    closePrice: str
+    volume: str
+    currency: str
+
+
+class TossInvestCandlesResponse(BaseModel):
+    symbol: str
+    interval: str
+    count: int
+    nextBefore: str
+    candles: list[TossInvestCandle]
+
+
+class TossInvestHolding(BaseModel):
+    symbol: str
+    name: str
+    marketCountry: str
+    currency: str
+    quantity: str
+    lastPrice: str
+    averagePurchasePrice: str
+    marketValue: str
+    profitLoss: str
+    profitLossRate: str
+    dailyProfitLoss: str
+    dailyProfitLossRate: str
+
+
+class TossInvestOpenOrder(BaseModel):
+    orderId: str
+    symbol: str
+    side: str
+    status: str
+    orderType: str
+    quantity: str
+    price: str
+    currency: str
+    orderedAt: str
+
+
+class TossInvestBuyingPower(BaseModel):
+    currency: str
+    cashBuyingPower: str
+
+
+class TossInvestStockDashboardResponse(BaseModel):
+    status: str
+    fetchedAt: str
+    cached: bool
+    cacheSeconds: int
+    source: TossInvestSource
+    summary: TossInvestDashboardSummary
+    accounts: list[TossInvestAccount]
+    watchlist: list[TossInvestStockQuote]
+    orderbook: Optional[TossInvestOrderbook] = None
+    candles: list[TossInvestCandle]
+    holdings: list[TossInvestHolding]
+    openOrders: list[TossInvestOpenOrder]
+    buyingPower: list[TossInvestBuyingPower]
+    errors: list[str]
+
+
+class TossInvestOrderRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=20)
+    side: str = Field(min_length=3, max_length=4)
+    orderType: str = Field(min_length=5, max_length=6)
+    quantity: Optional[str] = Field(default=None, min_length=1, max_length=30)
+    price: Optional[str] = Field(default=None, max_length=30)
+    orderAmount: Optional[str] = Field(default=None, max_length=30)
+    timeInForce: str = Field(default="DAY", min_length=3, max_length=3)
+    confirmHighValueOrder: bool = False
+
+
+class TossInvestOrderResponse(BaseModel):
+    status: str
+    orderId: str
+    clientOrderId: Optional[str] = None
+    symbol: str
+    side: str
+    orderType: str
+    quantity: Optional[str] = None
+    price: Optional[str] = None
+    orderAmount: Optional[str] = None
+    timeInForce: str
+    message: str
+
+
+class TossInvestOrderModifyRequest(BaseModel):
+    orderType: str = Field(min_length=5, max_length=6)
+    quantity: Optional[str] = Field(default=None, min_length=1, max_length=30)
+    price: Optional[str] = Field(default=None, max_length=30)
+    confirmHighValueOrder: bool = False
+
+
+class TossInvestOrderActionResponse(BaseModel):
+    status: str
+    orderId: str
+    clientOrderId: Optional[str] = None
+    message: str
+
+
 class SubwaySource(BaseModel):
     title: str
     provider: str

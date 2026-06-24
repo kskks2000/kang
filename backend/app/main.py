@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .academy_info_service import load_academy_info_basic
@@ -19,7 +19,17 @@ from .drive_service import (
 from .financial_market_service import load_financial_markets
 from .firebase_auth import verify_firebase_id_token
 from .market_cap_service import load_global_market_cap_top
+from .krx_stock_search_service import search_krx_stocks
 from .subway_service import load_subway_overview
+from .tossinvest_service import (
+    TossInvestApiError,
+    cancel_toss_order,
+    create_toss_order,
+    get_toss_order,
+    load_toss_stock_candles,
+    load_toss_stock_dashboard,
+    modify_toss_order,
+)
 from .schemas import (
     AcademyInfoBasicResponse,
     CalendarEventsRequest,
@@ -39,6 +49,14 @@ from .schemas import (
     SessionRequest,
     SessionResponse,
     SubwayOverviewResponse,
+    TossInvestCandlesResponse,
+    TossInvestOpenOrder,
+    TossInvestOrderActionResponse,
+    TossInvestOrderModifyRequest,
+    TossInvestOrderRequest,
+    TossInvestOrderResponse,
+    TossInvestStockDashboardResponse,
+    TossInvestStockSearchResponse,
 )
 from .settings import settings
 
@@ -54,11 +72,19 @@ app.add_middleware(
 )
 
 
-def _client_ip(request: Request) -> str | None:
+def _client_ip(request: Request) -> Optional[str]:
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
         return forwarded_for.split(",", 1)[0].strip()
     return request.client.host if request.client else None
+
+
+def _require_firebase_bearer_token(request: Request) -> dict:
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Firebase 인증 토큰이 필요합니다.")
+    return verify_firebase_id_token(token.strip())
 
 
 @app.get("/health")
@@ -79,6 +105,126 @@ def market_cap_global_top() -> dict:
 @app.get("/financial/markets", response_model=FinancialMarketsResponse)
 def financial_markets() -> dict:
     return load_financial_markets()
+
+
+@app.get("/toss/stock-dashboard", response_model=TossInvestStockDashboardResponse)
+def toss_stock_dashboard(
+    request: Request,
+    market: str = "KR",
+    symbol: Optional[str] = None,
+    symbols: Optional[str] = None,
+    candle_interval: str = Query("1m", alias="candleInterval"),
+) -> dict:
+    _require_firebase_bearer_token(request)
+    return load_toss_stock_dashboard(
+        market=market,
+        symbol=symbol,
+        symbols=symbols,
+        candle_interval=candle_interval,
+    )
+
+
+@app.get("/toss/candles", response_model=TossInvestCandlesResponse)
+def toss_stock_candles(
+    request: Request,
+    market: str = "KR",
+    symbol: Optional[str] = None,
+    candle_interval: str = Query("1m", alias="candleInterval"),
+    count: int = 200,
+    before: Optional[str] = None,
+) -> dict:
+    _require_firebase_bearer_token(request)
+    try:
+        return load_toss_stock_candles(
+            market=market,
+            symbol=symbol,
+            candle_interval=candle_interval,
+            count=count,
+            before=before,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TossInvestApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/toss/stocks/search", response_model=TossInvestStockSearchResponse)
+def toss_stock_search(
+    request: Request,
+    market: str = "KR",
+    query: str = "",
+    limit: int = 30,
+) -> dict:
+    _require_firebase_bearer_token(request)
+    market_code = "US" if market.strip().upper() in {"US", "USA", "GLOBAL"} else "KR"
+    bounded_limit = max(1, min(limit, 50))
+    items = search_krx_stocks(query, limit=bounded_limit) if market_code == "KR" else []
+    return {
+        "market": market_code,
+        "query": query,
+        "count": len(items),
+        "items": items,
+    }
+
+
+@app.post("/toss/orders", response_model=TossInvestOrderResponse)
+def toss_create_order(payload: TossInvestOrderRequest, request: Request) -> dict:
+    claims = _require_firebase_bearer_token(request)
+    user_email = str(claims.get("email") or "")
+    try:
+        return create_toss_order(payload.dict(), user_email=user_email)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TossInvestApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/toss/orders/{order_id}", response_model=TossInvestOpenOrder)
+def toss_get_order(order_id: str, request: Request) -> dict:
+    claims = _require_firebase_bearer_token(request)
+    user_email = str(claims.get("email") or "")
+    try:
+        return get_toss_order(order_id, user_email=user_email)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TossInvestApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/toss/orders/{order_id}/modify", response_model=TossInvestOrderActionResponse)
+def toss_modify_order(
+    order_id: str,
+    payload: TossInvestOrderModifyRequest,
+    request: Request,
+) -> dict:
+    claims = _require_firebase_bearer_token(request)
+    user_email = str(claims.get("email") or "")
+    try:
+        return modify_toss_order(order_id, payload.dict(), user_email=user_email)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TossInvestApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/toss/orders/{order_id}/cancel", response_model=TossInvestOrderActionResponse)
+def toss_cancel_order(order_id: str, request: Request) -> dict:
+    claims = _require_firebase_bearer_token(request)
+    user_email = str(claims.get("email") or "")
+    try:
+        return cancel_toss_order(order_id, user_email=user_email)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TossInvestApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/subway/overview", response_model=SubwayOverviewResponse)

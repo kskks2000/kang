@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../data/academy_info_basic_info.dart';
@@ -17,6 +18,7 @@ import '../services/google_keep_service.dart';
 import '../services/google_keep_launcher.dart';
 import '../services/stock_market_api.dart';
 import '../services/subway_api.dart';
+import '../services/toss_stock_api.dart';
 import '../theme/kang_theme.dart';
 import '../widgets/kang_mark.dart';
 
@@ -1219,10 +1221,84 @@ class _StockTradingFullScreen extends StatefulWidget {
 }
 
 class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
+  final TossStockApi _tossStockApi = TossStockApi();
+
   var _selectedMarket = _StockTradingMarket.domestic;
+  var _selectedInterval = _StockTradingChartInterval.oneMinute;
+  TossStockDashboard? _dashboard;
+  String? _dashboardError;
+  var _loadingDashboard = false;
+  var _loadSerial = 0;
 
   _StockTradingMarketConfig get _config =>
       _StockTradingMarketConfig.byMarket(_selectedMarket);
+
+  String get _marketCode =>
+      _selectedMarket == _StockTradingMarket.domestic ? 'KR' : 'US';
+
+  String get _activeSymbol =>
+      _selectedMarket == _StockTradingMarket.domestic ? '005930' : 'NVDA';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboard();
+  }
+
+  @override
+  void dispose() {
+    _tossStockApi.close();
+    super.dispose();
+  }
+
+  Future<void> _loadDashboard() async {
+    final serial = ++_loadSerial;
+    setState(() {
+      _loadingDashboard = true;
+      _dashboardError = null;
+    });
+    try {
+      final dashboard = await _tossStockApi.loadDashboard(
+        market: _marketCode,
+        symbol: _activeSymbol,
+        symbols: [_activeSymbol],
+        candleInterval: _selectedInterval.sourceInterval,
+      );
+      if (!mounted || serial != _loadSerial) {
+        return;
+      }
+      setState(() => _dashboard = dashboard);
+    } catch (error) {
+      if (!mounted || serial != _loadSerial) {
+        return;
+      }
+      setState(() => _dashboardError = error.toString());
+    } finally {
+      if (mounted && serial == _loadSerial) {
+        setState(() => _loadingDashboard = false);
+      }
+    }
+  }
+
+  void _changeMarket(_StockTradingMarket market) {
+    if (_selectedMarket == market) {
+      return;
+    }
+    setState(() {
+      _selectedMarket = market;
+      _dashboard = null;
+      _dashboardError = null;
+      _selectedInterval = _StockTradingChartInterval.oneMinute;
+    });
+    _loadDashboard();
+  }
+
+  void _changeInterval(_StockTradingChartInterval interval) {
+    if (_selectedInterval == interval) {
+      return;
+    }
+    setState(() => _selectedInterval = interval);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1236,9 +1312,7 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
             _StockTradingTopBar(
               config: config,
               selectedMarket: _selectedMarket,
-              onMarketChanged: (market) {
-                setState(() => _selectedMarket = market);
-              },
+              onMarketChanged: _changeMarket,
             ),
             Expanded(
               child: LayoutBuilder(
@@ -1259,7 +1333,17 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
                           const SizedBox(height: 10),
                           SizedBox(
                             height: 560,
-                            child: _StockTradingMarketBoard(config: config),
+                            child: _StockTradingMarketBoard(
+                              api: _tossStockApi,
+                              config: config,
+                              marketCode: _marketCode,
+                              symbol: _activeSymbol,
+                              dashboard: _dashboard,
+                              loading: _loadingDashboard,
+                              error: _dashboardError,
+                              selectedInterval: _selectedInterval,
+                              onIntervalChanged: _changeInterval,
+                            ),
                           ),
                           const SizedBox(height: 10),
                           SizedBox(
@@ -1291,7 +1375,17 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
                             children: [
                               Expanded(
                                 flex: 6,
-                                child: _StockTradingMarketBoard(config: config),
+                                child: _StockTradingMarketBoard(
+                                  api: _tossStockApi,
+                                  config: config,
+                                  marketCode: _marketCode,
+                                  symbol: _activeSymbol,
+                                  dashboard: _dashboard,
+                                  loading: _loadingDashboard,
+                                  error: _dashboardError,
+                                  selectedInterval: _selectedInterval,
+                                  onIntervalChanged: _changeInterval,
+                                ),
                               ),
                               SizedBox(height: padding),
                               Expanded(
@@ -1567,10 +1661,99 @@ class _StockTradingWatchlistPanel extends StatelessWidget {
   }
 }
 
-class _StockTradingMarketBoard extends StatelessWidget {
-  const _StockTradingMarketBoard({required this.config});
+class _StockTradingChartInterval {
+  const _StockTradingChartInterval({
+    required this.label,
+    required this.bucketMinutes,
+  });
 
+  final String label;
+  final int bucketMinutes;
+
+  String get sourceInterval => '1m';
+
+  static const thirtySeconds = _StockTradingChartInterval(
+    label: '30s',
+    bucketMinutes: 1,
+  );
+  static const oneMinute = _StockTradingChartInterval(
+    label: '1m',
+    bucketMinutes: 1,
+  );
+  static const twoMinutes = _StockTradingChartInterval(
+    label: '2m',
+    bucketMinutes: 2,
+  );
+  static const threeMinutes = _StockTradingChartInterval(
+    label: '3m',
+    bucketMinutes: 3,
+  );
+  static const fiveMinutes = _StockTradingChartInterval(
+    label: '5m',
+    bucketMinutes: 5,
+  );
+  static const tenMinutes = _StockTradingChartInterval(
+    label: '10m',
+    bucketMinutes: 10,
+  );
+  static const fifteenMinutes = _StockTradingChartInterval(
+    label: '15m',
+    bucketMinutes: 15,
+  );
+  static const thirtyMinutes = _StockTradingChartInterval(
+    label: '30m',
+    bucketMinutes: 30,
+  );
+  static const oneHour = _StockTradingChartInterval(
+    label: '1h',
+    bucketMinutes: 60,
+  );
+  static const twoHours = _StockTradingChartInterval(
+    label: '2h',
+    bucketMinutes: 120,
+  );
+  static const fourHours = _StockTradingChartInterval(
+    label: '4h',
+    bucketMinutes: 240,
+  );
+
+  static const values = [
+    thirtySeconds,
+    oneMinute,
+    twoMinutes,
+    threeMinutes,
+    fiveMinutes,
+    tenMinutes,
+    fifteenMinutes,
+    thirtyMinutes,
+    oneHour,
+    twoHours,
+    fourHours,
+  ];
+}
+
+class _StockTradingMarketBoard extends StatelessWidget {
+  const _StockTradingMarketBoard({
+    required this.api,
+    required this.config,
+    required this.marketCode,
+    required this.symbol,
+    required this.dashboard,
+    required this.loading,
+    required this.error,
+    required this.selectedInterval,
+    required this.onIntervalChanged,
+  });
+
+  final TossStockApi api;
   final _StockTradingMarketConfig config;
+  final String marketCode;
+  final String symbol;
+  final TossStockDashboard? dashboard;
+  final bool loading;
+  final String? error;
+  final _StockTradingChartInterval selectedInterval;
+  final ValueChanged<_StockTradingChartInterval> onIntervalChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1578,9 +1761,9 @@ class _StockTradingMarketBoard extends StatelessWidget {
       title: '시세 · 차트 · 호가',
       icon: Icons.candlestick_chart_rounded,
       color: config.color,
-      trailing: const Text(
-        '실시간 연결 예정',
-        style: TextStyle(
+      trailing: Text(
+        loading ? '조회 중' : '토스 시세',
+        style: const TextStyle(
           color: KangColors.slate,
           fontSize: 12,
           fontWeight: FontWeight.w800,
@@ -1589,15 +1772,29 @@ class _StockTradingMarketBoard extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 720;
-          final chart = _StockTradingChartPlaceholder(color: config.color);
-          final quote = _StockTradingQuotePlaceholder(config: config);
+          final chart = _StockTradingChartPlaceholder(
+            api: api,
+            color: config.color,
+            marketCode: marketCode,
+            symbol: symbol,
+            dashboard: dashboard,
+            loading: loading,
+            selectedInterval: selectedInterval,
+            onIntervalChanged: onIntervalChanged,
+          );
+          final quote = _StockTradingQuotePlaceholder(
+            config: config,
+            dashboard: dashboard,
+            loading: loading,
+            error: error,
+          );
 
           if (compact) {
             return SingleChildScrollView(
               padding: const EdgeInsets.all(12),
               child: Column(
                 children: [
-                  SizedBox(height: 260, child: chart),
+                  SizedBox(height: 300, child: chart),
                   const SizedBox(height: 12),
                   SizedBox(height: 240, child: quote),
                 ],
@@ -1621,71 +1818,378 @@ class _StockTradingMarketBoard extends StatelessWidget {
   }
 }
 
-class _StockTradingChartPlaceholder extends StatelessWidget {
-  const _StockTradingChartPlaceholder({required this.color});
+class _StockTradingChartPlaceholder extends StatefulWidget {
+  const _StockTradingChartPlaceholder({
+    required this.api,
+    required this.color,
+    required this.marketCode,
+    required this.symbol,
+    required this.dashboard,
+    required this.loading,
+    required this.selectedInterval,
+    required this.onIntervalChanged,
+  });
 
+  final TossStockApi api;
   final Color color;
+  final String marketCode;
+  final String symbol;
+  final TossStockDashboard? dashboard;
+  final bool loading;
+  final _StockTradingChartInterval selectedInterval;
+  final ValueChanged<_StockTradingChartInterval> onIntervalChanged;
+
+  @override
+  State<_StockTradingChartPlaceholder> createState() =>
+      _StockTradingChartPlaceholderState();
+}
+
+class _StockTradingChartPlaceholderState
+    extends State<_StockTradingChartPlaceholder> {
+  static const _maxVisibleCandles = 90;
+  static const _scrollPixelsPerCandle = 18.0;
+
+  List<TossCandle> _olderCandles = const [];
+  String? _nextBefore;
+  var _loadingOlderCandles = false;
+  var _hasOlderCandles = true;
+  int? _viewportStart;
+  int _lastCandleCount = 0;
+  int _lastVisibleCount = 0;
+  double _dragRemainder = 0;
+
+  @override
+  void didUpdateWidget(covariant _StockTradingChartPlaceholder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.marketCode != widget.marketCode ||
+        oldWidget.symbol != widget.symbol) {
+      _olderCandles = const [];
+      _nextBefore = null;
+      _hasOlderCandles = true;
+      _viewportStart = null;
+      _dragRemainder = 0;
+      return;
+    }
+    if (oldWidget.selectedInterval != widget.selectedInterval) {
+      _viewportStart = null;
+      _dragRemainder = 0;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final quote = widget.dashboard?.primaryQuote;
+    final rawCandles = _stockMergeCandles(
+      _olderCandles,
+      widget.dashboard?.candles ?? const <TossCandle>[],
+    );
+    final allCandles = _stockCandlesForInterval(
+      rawCandles,
+      widget.selectedInterval,
+    );
+    final visibleCount = math.min(_maxVisibleCandles, allCandles.length);
+    final maxStart = math.max(0, allCandles.length - visibleCount);
+    final viewportStart = (_viewportStart ?? maxStart).clamp(0, maxStart);
+    final viewportEnd = math.min(
+      allCandles.length,
+      viewportStart + visibleCount,
+    );
+    final candles = viewportStart < viewportEnd
+        ? allCandles.sublist(viewportStart, viewportEnd)
+        : const <TossCandle>[];
+    _lastCandleCount = allCandles.length;
+    _lastVisibleCount = visibleCount;
+
+    final latestCandle = candles.isEmpty ? null : candles.last;
+    final previousCandle = allCandles.length >= 2 && viewportEnd >= 2
+        ? allCandles[math.max(0, viewportEnd - 2)]
+        : null;
+    final open = _stockDoubleValue(latestCandle?.openPrice);
+    final high = _stockDoubleValue(latestCandle?.highPrice);
+    final low = _stockDoubleValue(latestCandle?.lowPrice);
+    final close = _stockDoubleValue(latestCandle?.closePrice);
+    final volume = _stockDoubleValue(latestCandle?.volume);
+    final previousClose = _stockDoubleValue(previousCandle?.closePrice);
+    final inferredChange = close != null && previousClose != null
+        ? close - previousClose
+        : null;
+    final atLatestViewport = viewportEnd == allCandles.length;
+    final changeValue = atLatestViewport
+        ? quote?.changeValue ?? inferredChange
+        : inferredChange;
+    final inferredPercent =
+        inferredChange != null && previousClose != null && previousClose != 0
+        ? inferredChange / previousClose * 100
+        : null;
+    final changePercent = atLatestViewport
+        ? quote?.changePercentValue ?? inferredPercent
+        : inferredPercent;
+    final changeColor = _stockChangeColor(changeValue);
+    final currency = latestCandle?.currency.isNotEmpty == true
+        ? latestCandle!.currency
+        : quote?.currency ?? '';
+    final priceLabel = atLatestViewport && quote != null && quote.hasPrice
+        ? '${_stockFormatNumber(quote.lastPrice)} ${quote.currency}'
+        : close == null
+        ? '시세 대기'
+        : '${_stockChartValue(close)} $currency'.trim();
+    final title = quote == null
+        ? '${widget.symbol} 차트'
+        : '${quote.symbol} ${quote.displayName}';
+
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE8EDF3)),
       ),
-      padding: const EdgeInsets.all(16),
-      child: CustomPaint(
-        painter: _StockTradingChartPainter(color: color),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '차트 영역',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '종목 선택 시 실시간 차트가 표시됩니다.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.66),
-                ),
-              ),
-            ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: [
+                for (final interval in _StockTradingChartInterval.values)
+                  _StockTradingChartIntervalPill(
+                    interval: interval,
+                    selected: interval == widget.selectedInterval,
+                    onTap: () => widget.onIntervalChanged(interval),
+                  ),
+              ],
+            ),
           ),
-        ),
+          const Divider(height: 1, color: Color(0xFFE8EDF3)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 9, 12, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: KangColors.ink,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Text(
+                  priceLabel,
+                  style: TextStyle(
+                    color: changeColor,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _StockTradingChartMetric(
+                    label: 'O',
+                    value: _stockChartValue(open),
+                    color: KangColors.slate,
+                  ),
+                  _StockTradingChartMetric(
+                    label: 'H',
+                    value: _stockChartValue(high),
+                    color: _stockRiseColor,
+                  ),
+                  _StockTradingChartMetric(
+                    label: 'L',
+                    value: _stockChartValue(low),
+                    color: _stockFallColor,
+                  ),
+                  _StockTradingChartMetric(
+                    label: 'C',
+                    value: _stockChartValue(close),
+                    color: changeColor,
+                  ),
+                  _StockTradingChartMetric(
+                    label: '',
+                    value:
+                        '${_stockSignedNumber(changeValue)} ${_stockPercentLabel(changePercent)}',
+                    color: changeColor,
+                  ),
+                  _StockTradingChartMetric(
+                    label: 'Vol',
+                    value: _stockCompactNumber(volume),
+                    color: KangColors.slate,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Listener(
+                    onPointerSignal: _handleChartPointerSignal,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onHorizontalDragUpdate: _handleChartDragUpdate,
+                      onHorizontalDragEnd: (_) => _dragRemainder = 0,
+                      child: CustomPaint(
+                        painter: _StockTradingCandleChartPainter(
+                          color: widget.color,
+                          candles: candles,
+                          loading: widget.loading || _loadingOlderCandles,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (_loadingOlderCandles)
+                  const Positioned(
+                    left: 14,
+                    bottom: 12,
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                if (candles.isEmpty)
+                  Center(
+                    child: Text(
+                      widget.loading ? '시세를 불러오는 중입니다.' : '차트 데이터 대기',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: KangColors.slate,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  void _handleChartDragUpdate(DragUpdateDetails details) {
+    _dragRemainder += details.primaryDelta ?? details.delta.dx;
+    final steps = (_dragRemainder / _scrollPixelsPerCandle).truncate();
+    if (steps == 0) {
+      return;
+    }
+    _dragRemainder -= steps * _scrollPixelsPerCandle;
+    _shiftViewport(-steps);
+  }
+
+  void _handleChartPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) {
+      return;
+    }
+    final primaryDelta = event.scrollDelta.dx.abs() > event.scrollDelta.dy.abs()
+        ? event.scrollDelta.dx
+        : event.scrollDelta.dy;
+    if (primaryDelta == 0) {
+      return;
+    }
+    final steps = math.max(1, (primaryDelta.abs() / 40).ceil());
+    _shiftViewport(primaryDelta > 0 ? -steps : steps);
+  }
+
+  void _shiftViewport(int delta) {
+    if (_lastCandleCount <= _lastVisibleCount || _lastVisibleCount == 0) {
+      if (delta < 0) {
+        _loadOlderCandles();
+      }
+      return;
+    }
+
+    final maxStart = math.max(0, _lastCandleCount - _lastVisibleCount);
+    final current = (_viewportStart ?? maxStart).clamp(0, maxStart);
+    final next = (current + delta).clamp(0, maxStart);
+    if (next == current) {
+      if (delta < 0 && current == 0) {
+        _loadOlderCandles();
+      }
+      return;
+    }
+    setState(() => _viewportStart = next);
+    if (next <= 2 && delta < 0) {
+      _loadOlderCandles();
+    }
+  }
+
+  Future<void> _loadOlderCandles() async {
+    if (_loadingOlderCandles || widget.loading || !_hasOlderCandles) {
+      return;
+    }
+    final baseCandles = widget.dashboard?.candles ?? const <TossCandle>[];
+    final mergedCandles = _stockMergeCandles(_olderCandles, baseCandles);
+    if (mergedCandles.isEmpty) {
+      return;
+    }
+    final before = (_nextBefore?.trim().isNotEmpty == true)
+        ? _nextBefore!.trim()
+        : mergedCandles.first.timestamp.trim();
+    if (before.isEmpty) {
+      return;
+    }
+
+    setState(() => _loadingOlderCandles = true);
+    try {
+      final result = await widget.api.loadCandles(
+        market: widget.marketCode,
+        symbol: widget.symbol,
+        candleInterval: widget.selectedInterval.sourceInterval,
+        count: 200,
+        before: before,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _olderCandles = _stockMergeCandles(_olderCandles, result.candles);
+        final nextBefore = result.nextBefore.trim();
+        _nextBefore = nextBefore.isEmpty ? _nextBefore : nextBefore;
+        _hasOlderCandles = result.candles.isNotEmpty || nextBefore.isNotEmpty;
+        _viewportStart = 0;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingOlderCandles = false);
+      }
+    }
   }
 }
 
 class _StockTradingQuotePlaceholder extends StatelessWidget {
-  const _StockTradingQuotePlaceholder({required this.config});
+  const _StockTradingQuotePlaceholder({
+    required this.config,
+    required this.dashboard,
+    required this.loading,
+    required this.error,
+  });
 
   final _StockTradingMarketConfig config;
+  final TossStockDashboard? dashboard;
+  final bool loading;
+  final String? error;
 
   @override
   Widget build(BuildContext context) {
-    final rows = config.title == '국내 주식'
-        ? const [
-            ('매도 3', '72,300'),
-            ('매도 2', '72,200'),
-            ('매도 1', '72,100'),
-            ('매수 1', '72,000'),
-            ('매수 2', '71,900'),
-          ]
-        : const [
-            ('Ask 3', '212.90'),
-            ('Ask 2', '212.75'),
-            ('Ask 1', '212.63'),
-            ('Bid 1', '212.50'),
-            ('Bid 2', '212.41'),
-          ];
+    final orderbook = dashboard?.orderbook;
+    final rows = [
+      ...?orderbook?.asks.take(5).map((item) => ('매도', item.price)),
+      ...?orderbook?.bids.take(5).map((item) => ('매수', item.price)),
+    ];
 
     return Container(
       decoration: BoxDecoration(
@@ -1699,48 +2203,149 @@ class _StockTradingQuotePlaceholder extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              '호가 보드',
+              orderbook == null
+                  ? '${dashboard?.summary.primarySymbol ?? ''} 호가'
+                  : '${orderbook.symbol} 호가',
               style: TextStyle(
                 color: config.color,
                 fontWeight: FontWeight.w900,
               ),
             ),
           ),
-          const Divider(height: 1, color: KangColors.line),
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(10),
-              itemCount: rows.length,
-              itemBuilder: (context, index) {
-                final row = rows[index];
-                final ask = index < 3;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          row.$1,
-                          style: TextStyle(
-                            color: ask ? Colors.red.shade600 : config.color,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+            child: rows.isEmpty
+                ? Center(
+                    child: Text(
+                      loading ? '호가를 불러오는 중입니다.' : error ?? '호가 조회 대기',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: KangColors.slate,
+                        fontWeight: FontWeight.w800,
                       ),
-                      Text(
-                        row.$2,
-                        style: const TextStyle(
-                          color: KangColors.ink,
-                          fontWeight: FontWeight.w900,
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    itemBuilder: (context, index) {
+                      final row = rows[index];
+                      final sell = row.$1 == '매도';
+                      return Container(
+                        height: 34,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: sell
+                              ? Colors.red.withValues(alpha: 0.055)
+                              : config.color.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ),
-                    ],
+                        child: Row(
+                          children: [
+                            Text(
+                              row.$1,
+                              style: TextStyle(
+                                color: sell
+                                    ? Colors.red.shade600
+                                    : config.color,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              _stockFormatNumber(row.$2),
+                              style: const TextStyle(
+                                color: KangColors.ink,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    separatorBuilder: (_, _) => const SizedBox(height: 7),
+                    itemCount: rows.length,
                   ),
-                );
-              },
-            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StockTradingChartIntervalPill extends StatelessWidget {
+  const _StockTradingChartIntervalPill({
+    required this.interval,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _StockTradingChartInterval interval;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: 40,
+          alignment: Alignment.center,
+          margin: const EdgeInsets.only(right: 18),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: selected ? const Color(0xFF111827) : Colors.transparent,
+                width: 2,
+              ),
+            ),
+          ),
+          child: Text(
+            interval.label,
+            style: TextStyle(
+              color: selected ? const Color(0xFF111827) : KangColors.slate,
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StockTradingChartMetric extends StatelessWidget {
+  const _StockTradingChartMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            if (label.isNotEmpty)
+              TextSpan(
+                text: '$label ',
+                style: const TextStyle(color: KangColors.slate),
+              ),
+            TextSpan(
+              text: value,
+              style: TextStyle(color: color),
+            ),
+          ],
+        ),
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
       ),
     );
   }
@@ -1920,49 +2525,528 @@ class _StockTradingSummaryBox extends StatelessWidget {
   }
 }
 
-class _StockTradingChartPainter extends CustomPainter {
-  const _StockTradingChartPainter({required this.color});
+const Color _stockRiseColor = Color(0xFFE53935);
+const Color _stockFallColor = Color(0xFF2563EB);
+
+Color _stockChangeColor(double? value) {
+  if (value == null || value == 0) {
+    return KangColors.slate;
+  }
+  return value > 0 ? _stockRiseColor : _stockFallColor;
+}
+
+double? _stockDoubleValue(String? value) {
+  final normalized = value?.replaceAll(',', '').trim() ?? '';
+  if (normalized.isEmpty) {
+    return null;
+  }
+  return double.tryParse(normalized);
+}
+
+String _stockChartValue(double? value) {
+  if (value == null) {
+    return '--';
+  }
+  return _stockFormatNumber(value.toStringAsFixed(value >= 1000 ? 0 : 2));
+}
+
+String _stockSignedNumber(double? value) {
+  if (value == null) {
+    return '--';
+  }
+  final sign = value > 0 ? '+' : '';
+  return '$sign${_stockFormatNumber(value.toStringAsFixed(value.abs() >= 1000 ? 0 : 2))}';
+}
+
+String _stockPercentLabel(double? value) {
+  if (value == null) {
+    return '';
+  }
+  final sign = value > 0 ? '+' : '';
+  return '($sign${value.toStringAsFixed(2)}%)';
+}
+
+String _stockCompactNumber(double? value) {
+  if (value == null) {
+    return '--';
+  }
+  if (value >= 1000000000) {
+    return '${(value / 1000000000).toStringAsFixed(2)}B';
+  }
+  if (value >= 1000000) {
+    return '${(value / 1000000).toStringAsFixed(2)}M';
+  }
+  if (value >= 1000) {
+    return '${(value / 1000).toStringAsFixed(1)}K';
+  }
+  return _stockFormatNumber(value.toStringAsFixed(0));
+}
+
+String _stockFormatNumber(String value) {
+  final normalized = value.replaceAll(',', '').trim();
+  if (normalized.isEmpty) {
+    return '--';
+  }
+  final parsed = double.tryParse(normalized);
+  if (parsed == null) {
+    return value;
+  }
+  final negative = normalized.startsWith('-');
+  final unsigned = negative ? normalized.substring(1) : normalized;
+  final parts = unsigned.split('.');
+  final integer = parts.first;
+  final decimal = parts.length > 1 ? parts.sublist(1).join('.') : '';
+  final buffer = StringBuffer();
+  for (var index = 0; index < integer.length; index++) {
+    final remaining = integer.length - index;
+    buffer.write(integer[index]);
+    if (remaining > 1 && remaining % 3 == 1) {
+      buffer.write(',');
+    }
+  }
+  final formatted = '${negative ? '-' : ''}$buffer';
+  final trimmedDecimal = decimal.replaceFirst(RegExp(r'0+$'), '');
+  return trimmedDecimal.isEmpty ? formatted : '$formatted.$trimmedDecimal';
+}
+
+List<TossCandle> _stockMergeCandles(
+  List<TossCandle> olderCandles,
+  List<TossCandle> newerCandles,
+) {
+  final byKey = <String, TossCandle>{};
+  var fallbackIndex = 0;
+  void addCandle(TossCandle candle) {
+    final timestamp = candle.timestamp.trim();
+    final key = timestamp.isNotEmpty
+        ? timestamp
+        : 'fallback-${fallbackIndex++}-${candle.openPrice}-${candle.closePrice}';
+    byKey[key] = candle;
+  }
+
+  for (final candle in olderCandles) {
+    addCandle(candle);
+  }
+  for (final candle in newerCandles) {
+    addCandle(candle);
+  }
+  return _stockSortedCandles(byKey.values.toList(growable: false));
+}
+
+List<TossCandle> _stockCandlesForInterval(
+  List<TossCandle> candles,
+  _StockTradingChartInterval interval,
+) {
+  final sorted = _stockSortedCandles(candles);
+  if (interval.bucketMinutes <= 1 || sorted.length < 2) {
+    return sorted;
+  }
+
+  final bucketSizeMs = interval.bucketMinutes * 60000;
+  final result = <TossCandle>[];
+  _StockTradingCandleBucket? bucket;
+  for (var index = 0; index < sorted.length; index++) {
+    final candle = sorted[index];
+    final timestamp = DateTime.tryParse(candle.timestamp);
+    final bucketKey = timestamp == null
+        ? index ~/ interval.bucketMinutes
+        : timestamp.millisecondsSinceEpoch ~/ bucketSizeMs;
+    if (bucket == null || bucket.key != bucketKey) {
+      final completed = bucket?.toCandle();
+      if (completed != null) {
+        result.add(completed);
+      }
+      bucket = _StockTradingCandleBucket(bucketKey);
+    }
+    bucket.add(candle);
+  }
+  final completed = bucket?.toCandle();
+  if (completed != null) {
+    result.add(completed);
+  }
+  return result.isEmpty ? sorted : result;
+}
+
+List<TossCandle> _stockSortedCandles(List<TossCandle> candles) {
+  final indexed = [
+    for (var index = 0; index < candles.length; index++)
+      _StockTradingIndexedCandle(index, candles[index]),
+  ];
+  indexed.sort((a, b) {
+    final aTime = DateTime.tryParse(a.candle.timestamp);
+    final bTime = DateTime.tryParse(b.candle.timestamp);
+    if (aTime != null && bTime != null) {
+      final comparison = aTime.compareTo(bTime);
+      if (comparison != 0) {
+        return comparison;
+      }
+    }
+    return a.index.compareTo(b.index);
+  });
+  return indexed.map((item) => item.candle).toList(growable: false);
+}
+
+String _stockCandleNumber(double value) {
+  if (!value.isFinite) {
+    return '';
+  }
+  final fixed = value.abs() >= 1000
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(4);
+  if (!fixed.contains('.')) {
+    return fixed;
+  }
+  final trimmed = fixed
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+  return trimmed.isEmpty ? '0' : trimmed;
+}
+
+class _StockTradingIndexedCandle {
+  const _StockTradingIndexedCandle(this.index, this.candle);
+
+  final int index;
+  final TossCandle candle;
+}
+
+class _StockTradingCandleBucket {
+  _StockTradingCandleBucket(this.key);
+
+  final int key;
+  double? _open;
+  double? _high;
+  double? _low;
+  double? _close;
+  double _volume = 0;
+  String _timestamp = '';
+  String _currency = '';
+
+  void add(TossCandle candle) {
+    final close = _stockDoubleValue(candle.closePrice);
+    final open = _stockDoubleValue(candle.openPrice) ?? close;
+    final high = _stockDoubleValue(candle.highPrice) ?? close ?? open;
+    final low = _stockDoubleValue(candle.lowPrice) ?? close ?? open;
+    if (open == null || high == null || low == null || close == null) {
+      return;
+    }
+    _open ??= open;
+    _high = _high == null ? high : math.max(_high!, high);
+    _low = _low == null ? low : math.min(_low!, low);
+    _close = close;
+    _volume += _stockDoubleValue(candle.volume) ?? 0;
+    _timestamp = candle.timestamp;
+    if (_currency.isEmpty) {
+      _currency = candle.currency;
+    }
+  }
+
+  TossCandle? toCandle() {
+    final open = _open;
+    final high = _high;
+    final low = _low;
+    final close = _close;
+    if (open == null || high == null || low == null || close == null) {
+      return null;
+    }
+    return TossCandle(
+      timestamp: _timestamp,
+      openPrice: _stockCandleNumber(open),
+      highPrice: _stockCandleNumber(high),
+      lowPrice: _stockCandleNumber(low),
+      closePrice: _stockCandleNumber(close),
+      volume: _stockCandleNumber(_volume),
+      currency: _currency,
+    );
+  }
+}
+
+class _StockTradingCandlePoint {
+  const _StockTradingCandlePoint({
+    required this.open,
+    required this.high,
+    required this.low,
+    required this.close,
+    required this.volume,
+    required this.timestamp,
+  });
+
+  final double open;
+  final double high;
+  final double low;
+  final double close;
+  final double volume;
+  final String timestamp;
+
+  bool get up => close >= open;
+}
+
+class _StockTradingCandleChartPainter extends CustomPainter {
+  const _StockTradingCandleChartPainter({
+    required this.color,
+    required this.candles,
+    required this.loading,
+  });
 
   final Color color;
+  final List<TossCandle> candles;
+  final bool loading;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final chartRect = Rect.fromLTWH(10, 8, size.width - 78, size.height - 70);
+    final volumeRect = Rect.fromLTWH(
+      chartRect.left,
+      chartRect.bottom + 10,
+      chartRect.width,
+      34,
+    );
     final gridPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.08)
+      ..color = const Color(0xFFEFF3F8)
       ..strokeWidth = 1;
-    for (var i = 1; i < 5; i++) {
-      final y = size.height * i / 5;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    for (var i = 0; i <= 5; i++) {
+      final y = chartRect.top + chartRect.height * i / 5;
+      canvas.drawLine(
+        Offset(chartRect.left, y),
+        Offset(chartRect.right, y),
+        gridPaint,
+      );
+    }
+    for (var i = 0; i <= 8; i++) {
+      final x = chartRect.left + chartRect.width * i / 8;
+      canvas.drawLine(
+        Offset(x, chartRect.top),
+        Offset(x, volumeRect.bottom),
+        gridPaint,
+      );
     }
 
-    final linePaint = Paint()
-      ..color = color.withValues(alpha: 0.95)
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
-    final path = Path();
-    path.moveTo(0, size.height * 0.68);
-    path.cubicTo(
-      size.width * 0.18,
-      size.height * 0.58,
-      size.width * 0.24,
-      size.height * 0.78,
-      size.width * 0.42,
-      size.height * 0.48,
+    final parsed = candles
+        .map(_parseCandle)
+        .whereType<_StockTradingCandlePoint>()
+        .toList(growable: false);
+    if (parsed.isEmpty) {
+      _drawMutedWave(canvas, chartRect, color);
+      return;
+    }
+
+    final minPrice = parsed.map((item) => item.low).reduce(math.min);
+    final maxPrice = parsed.map((item) => item.high).reduce(math.max);
+    final pricePadding = math.max(
+      (maxPrice - minPrice) * 0.08,
+      maxPrice * 0.002,
     );
-    path.cubicTo(
-      size.width * 0.58,
-      size.height * 0.22,
-      size.width * 0.72,
-      size.height * 0.62,
-      size.width,
-      size.height * 0.34,
+    final lowBound = minPrice - pricePadding;
+    final highBound = maxPrice + pricePadding;
+    final range = math.max(highBound - lowBound, 1);
+    final maxVolume = math.max(
+      parsed.map((item) => item.volume).fold<double>(0, math.max),
+      1,
     );
-    canvas.drawPath(path, linePaint);
+
+    double yFor(double price) =>
+        chartRect.bottom - ((price - lowBound) / range) * chartRect.height;
+
+    for (var i = 0; i <= 5; i++) {
+      final value = highBound - range * i / 5;
+      _drawChartText(
+        canvas,
+        _stockChartValue(value),
+        Offset(
+          chartRect.right + 8,
+          chartRect.top + chartRect.height * i / 5 - 7,
+        ),
+        const Color(0xFF8A94A6),
+        11,
+        FontWeight.w700,
+      );
+    }
+
+    final step = chartRect.width / parsed.length;
+    final candleWidth = math.max(2.4, math.min(8.0, step * 0.58));
+    for (var i = 0; i < parsed.length; i++) {
+      final candle = parsed[i];
+      final centerX = chartRect.left + step * (i + 0.5);
+      final candleColor = candle.up ? _stockRiseColor : _stockFallColor;
+      final highY = yFor(candle.high);
+      final lowY = yFor(candle.low);
+      var openY = yFor(candle.open);
+      var closeY = yFor(candle.close);
+      if ((openY - closeY).abs() < 2) {
+        final centerY = (openY + closeY) / 2;
+        openY = centerY - 1;
+        closeY = centerY + 1;
+      }
+      canvas.drawLine(
+        Offset(centerX, highY),
+        Offset(centerX, lowY),
+        Paint()
+          ..color = candleColor
+          ..strokeWidth = math.max(1, candleWidth * 0.24)
+          ..strokeCap = StrokeCap.round,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(
+            centerX - candleWidth / 2,
+            math.min(openY, closeY),
+            centerX + candleWidth / 2,
+            math.max(openY, closeY),
+          ),
+          const Radius.circular(1.5),
+        ),
+        Paint()..color = candleColor,
+      );
+      final volumeHeight = (candle.volume / maxVolume) * volumeRect.height;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            centerX - candleWidth / 2,
+            volumeRect.bottom - volumeHeight,
+            candleWidth,
+            volumeHeight,
+          ),
+          const Radius.circular(1.5),
+        ),
+        Paint()..color = candleColor.withValues(alpha: 0.22),
+      );
+    }
+
+    final current = parsed.last.close;
+    final currentY = yFor(current);
+    final currentColor = parsed.last.up ? _stockRiseColor : _stockFallColor;
+    _drawDashedLine(
+      canvas,
+      Offset(chartRect.left, currentY),
+      Offset(chartRect.right, currentY),
+      Paint()
+        ..color = currentColor.withValues(alpha: 0.42)
+        ..strokeWidth = 1,
+    );
+    _drawPriceMarker(
+      canvas,
+      Offset(chartRect.right + 2, currentY),
+      current,
+      currentColor,
+    );
+  }
+
+  _StockTradingCandlePoint? _parseCandle(TossCandle candle) {
+    final close = _stockDoubleValue(candle.closePrice);
+    final open = _stockDoubleValue(candle.openPrice) ?? close;
+    final high = _stockDoubleValue(candle.highPrice) ?? close ?? open;
+    final low = _stockDoubleValue(candle.lowPrice) ?? close ?? open;
+    if (open == null || high == null || low == null || close == null) {
+      return null;
+    }
+    return _StockTradingCandlePoint(
+      open: open,
+      high: high,
+      low: low,
+      close: close,
+      volume: _stockDoubleValue(candle.volume) ?? 0,
+      timestamp: candle.timestamp,
+    );
+  }
+
+  void _drawMutedWave(Canvas canvas, Rect rect, Color accent) {
+    final path = Path()
+      ..moveTo(rect.left, rect.center.dy)
+      ..cubicTo(
+        rect.left + rect.width * 0.2,
+        rect.top + rect.height * 0.68,
+        rect.left + rect.width * 0.34,
+        rect.top + rect.height * 0.28,
+        rect.left + rect.width * 0.52,
+        rect.center.dy,
+      )
+      ..cubicTo(
+        rect.left + rect.width * 0.7,
+        rect.bottom - rect.height * 0.2,
+        rect.left + rect.width * 0.82,
+        rect.top + rect.height * 0.24,
+        rect.right,
+        rect.top + rect.height * 0.36,
+      );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = accent.withValues(alpha: loading ? 0.28 : 0.16)
+        ..strokeWidth = 2
+        ..style = PaintingStyle.stroke,
+    );
+  }
+
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
+    const dash = 4.0;
+    const gap = 4.0;
+    var x = start.dx;
+    while (x < end.dx) {
+      canvas.drawLine(
+        Offset(x, start.dy),
+        Offset(math.min(x + dash, end.dx), end.dy),
+        paint,
+      );
+      x += dash + gap;
+    }
+  }
+
+  void _drawPriceMarker(
+    Canvas canvas,
+    Offset anchor,
+    double price,
+    Color color,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: _stockChartValue(price),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final rect = Rect.fromLTWH(
+      anchor.dx,
+      anchor.dy - 11,
+      painter.width + 12,
+      22,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(4)),
+      Paint()..color = color,
+    );
+    painter.paint(canvas, Offset(rect.left + 6, rect.top + 4));
+  }
+
+  void _drawChartText(
+    Canvas canvas,
+    String text,
+    Offset offset,
+    Color color,
+    double fontSize,
+    FontWeight fontWeight,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: fontWeight,
+        ),
+      ),
+      maxLines: 1,
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(canvas, offset);
   }
 
   @override
-  bool shouldRepaint(covariant _StockTradingChartPainter oldDelegate) {
-    return oldDelegate.color != color;
+  bool shouldRepaint(covariant _StockTradingCandleChartPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.loading != loading ||
+        oldDelegate.candles != candles;
   }
 }
 
