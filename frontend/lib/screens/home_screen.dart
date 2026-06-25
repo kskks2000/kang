@@ -1220,11 +1220,16 @@ class _StockTradingFullScreen extends StatefulWidget {
       _StockTradingFullScreenState();
 }
 
+enum _StockTradingWorkspace { watchlist, chart, orders, executions }
+
 class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
   final TossStockApi _tossStockApi = TossStockApi();
 
   var _selectedMarket = _StockTradingMarket.domestic;
   var _selectedInterval = _StockTradingChartInterval.oneMinute;
+  var _activeWorkspace = _StockTradingWorkspace.watchlist;
+  String? _selectedDomesticSymbol;
+  String? _selectedOverseasSymbol;
   TossStockDashboard? _dashboard;
   String? _dashboardError;
   var _loadingDashboard = false;
@@ -1236,8 +1241,9 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
   String get _marketCode =>
       _selectedMarket == _StockTradingMarket.domestic ? 'KR' : 'US';
 
-  String get _activeSymbol =>
-      _selectedMarket == _StockTradingMarket.domestic ? '005930' : 'NVDA';
+  String get _activeSymbol => _selectedMarket == _StockTradingMarket.domestic
+      ? _selectedDomesticSymbol ?? '005930'
+      : _selectedOverseasSymbol ?? 'NVDA';
 
   @override
   void initState() {
@@ -1293,6 +1299,29 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
     _loadDashboard();
   }
 
+  void _changeWorkspace(_StockTradingWorkspace workspace) {
+    if (_activeWorkspace == workspace) {
+      return;
+    }
+    setState(() => _activeWorkspace = workspace);
+  }
+
+  void _selectSymbol(String symbol) {
+    if (_activeSymbol == symbol) {
+      return;
+    }
+    setState(() {
+      if (_selectedMarket == _StockTradingMarket.domestic) {
+        _selectedDomesticSymbol = symbol;
+      } else {
+        _selectedOverseasSymbol = symbol;
+      }
+      _dashboard = null;
+      _dashboardError = null;
+    });
+    _loadDashboard();
+  }
+
   void _changeInterval(_StockTradingChartInterval interval) {
     if (_selectedInterval == interval) {
       return;
@@ -1320,90 +1349,118 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
                   final wide = constraints.maxWidth >= 1100;
                   final medium = constraints.maxWidth >= 820;
                   final padding = constraints.maxWidth < 720 ? 10.0 : 14.0;
+                  final watchlistPanel = _StockTradingWatchlistPanel(
+                    config: config,
+                    selectedSymbol: _activeSymbol,
+                    onSymbolSelected: _selectSymbol,
+                  );
+                  final marketBoard = _StockTradingMarketBoard(
+                    api: _tossStockApi,
+                    config: config,
+                    marketCode: _marketCode,
+                    symbol: _activeSymbol,
+                    dashboard: _dashboard,
+                    loading: _loadingDashboard,
+                    error: _dashboardError,
+                    selectedInterval: _selectedInterval,
+                    onIntervalChanged: _changeInterval,
+                  );
+                  final orderPanel = _StockTradingOrderPanel(config: config);
+                  final executionPanel = _StockTradingExecutionPanel(
+                    config: config,
+                  );
 
                   if (!medium) {
                     return SingleChildScrollView(
                       padding: EdgeInsets.all(padding),
                       child: Column(
                         children: [
-                          SizedBox(
-                            height: 420,
-                            child: _StockTradingWatchlistPanel(config: config),
-                          ),
+                          SizedBox(height: 420, child: watchlistPanel),
                           const SizedBox(height: 10),
-                          SizedBox(
-                            height: 560,
-                            child: _StockTradingMarketBoard(
-                              api: _tossStockApi,
-                              config: config,
-                              marketCode: _marketCode,
-                              symbol: _activeSymbol,
-                              dashboard: _dashboard,
-                              loading: _loadingDashboard,
-                              error: _dashboardError,
-                              selectedInterval: _selectedInterval,
-                              onIntervalChanged: _changeInterval,
-                            ),
-                          ),
+                          SizedBox(height: 560, child: marketBoard),
                           const SizedBox(height: 10),
-                          SizedBox(
-                            height: 390,
-                            child: _StockTradingOrderPanel(config: config),
-                          ),
+                          SizedBox(height: 390, child: orderPanel),
                           const SizedBox(height: 10),
-                          SizedBox(
-                            height: 210,
-                            child: _StockTradingExecutionPanel(config: config),
-                          ),
+                          SizedBox(height: 210, child: executionPanel),
                         ],
                       ),
                     );
                   }
 
-                  return Padding(
-                    padding: EdgeInsets.all(padding),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(
-                          width: wide ? 292 : 252,
-                          child: _StockTradingWatchlistPanel(config: config),
-                        ),
-                        SizedBox(width: padding),
-                        Expanded(
-                          child: Column(
+                  Widget mainWorkspace;
+                  switch (_activeWorkspace) {
+                    case _StockTradingWorkspace.chart:
+                      mainWorkspace = Column(
+                        children: [
+                          Expanded(flex: 7, child: marketBoard),
+                          SizedBox(height: padding),
+                          Expanded(flex: 3, child: watchlistPanel),
+                        ],
+                      );
+                    case _StockTradingWorkspace.orders:
+                    case _StockTradingWorkspace.executions:
+                      mainWorkspace = Column(
+                        children: [
+                          Expanded(flex: 5, child: marketBoard),
+                          SizedBox(height: padding),
+                          Expanded(flex: 4, child: watchlistPanel),
+                        ],
+                      );
+                    case _StockTradingWorkspace.watchlist:
+                      mainWorkspace = Column(
+                        children: [
+                          Expanded(flex: 5, child: watchlistPanel),
+                          SizedBox(height: padding),
+                          Expanded(flex: 4, child: marketBoard),
+                        ],
+                      );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _StockTradingSideRail(
+                        color: config.color,
+                        active: _activeWorkspace,
+                        onChanged: _changeWorkspace,
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.all(padding),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Expanded(
-                                flex: 6,
-                                child: _StockTradingMarketBoard(
-                                  api: _tossStockApi,
-                                  config: config,
-                                  marketCode: _marketCode,
-                                  symbol: _activeSymbol,
-                                  dashboard: _dashboard,
-                                  loading: _loadingDashboard,
-                                  error: _dashboardError,
-                                  selectedInterval: _selectedInterval,
-                                  onIntervalChanged: _changeInterval,
-                                ),
-                              ),
-                              SizedBox(height: padding),
-                              Expanded(
-                                flex: 3,
-                                child: _StockTradingExecutionPanel(
-                                  config: config,
+                              Expanded(child: mainWorkspace),
+                              SizedBox(width: padding),
+                              SizedBox(
+                                width: wide ? 340 : 304,
+                                child: Column(
+                                  children: [
+                                    Expanded(
+                                      flex:
+                                          _activeWorkspace ==
+                                              _StockTradingWorkspace.orders
+                                          ? 7
+                                          : 5,
+                                      child: orderPanel,
+                                    ),
+                                    SizedBox(height: padding),
+                                    Expanded(
+                                      flex:
+                                          _activeWorkspace ==
+                                              _StockTradingWorkspace.executions
+                                          ? 5
+                                          : 3,
+                                      child: executionPanel,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        SizedBox(width: padding),
-                        SizedBox(
-                          width: wide ? 336 : 304,
-                          child: _StockTradingOrderPanel(config: config),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -1496,6 +1553,171 @@ class _StockTradingTopBar extends StatelessWidget {
   }
 }
 
+class _StockTradingSideRail extends StatelessWidget {
+  const _StockTradingSideRail({
+    required this.color,
+    required this.active,
+    required this.onChanged,
+  });
+
+  final Color color;
+  final _StockTradingWorkspace active;
+  final ValueChanged<_StockTradingWorkspace> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 58,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: const BoxDecoration(
+        color: Color(0xFF0B1220),
+        border: Border(right: BorderSide(color: Color(0x1AFFFFFF))),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.28),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.show_chart_rounded,
+              size: 20,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: 28,
+            height: 1,
+            color: Colors.white.withValues(alpha: 0.12),
+          ),
+          const SizedBox(height: 10),
+          _StockTradingRailButton(
+            icon: Icons.favorite_rounded,
+            label: '관심종목',
+            selected: active == _StockTradingWorkspace.watchlist,
+            color: color,
+            onTap: () => onChanged(_StockTradingWorkspace.watchlist),
+          ),
+          _StockTradingRailButton(
+            icon: Icons.candlestick_chart_rounded,
+            label: '차트',
+            selected: active == _StockTradingWorkspace.chart,
+            color: color,
+            onTap: () => onChanged(_StockTradingWorkspace.chart),
+          ),
+          _StockTradingRailButton(
+            icon: Icons.price_change_rounded,
+            label: '주문',
+            selected: active == _StockTradingWorkspace.orders,
+            color: color,
+            onTap: () => onChanged(_StockTradingWorkspace.orders),
+          ),
+          _StockTradingRailButton(
+            icon: Icons.receipt_long_rounded,
+            label: '체결',
+            selected: active == _StockTradingWorkspace.executions,
+            color: color,
+            onTap: () => onChanged(_StockTradingWorkspace.executions),
+          ),
+          const Spacer(),
+          Tooltip(
+            message: 'LIVE',
+            child: Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF19C37D),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StockTradingRailButton extends StatelessWidget {
+  const _StockTradingRailButton({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: label,
+      waitDuration: const Duration(milliseconds: 350),
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: label,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Material(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.14)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: onTap,
+              child: Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: selected
+                      ? Border.all(color: color.withValues(alpha: 0.8))
+                      : null,
+                ),
+                child: Icon(
+                  icon,
+                  size: 20,
+                  color: selected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.58),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StockTradingPanel extends StatelessWidget {
   const _StockTradingPanel({
     required this.title,
@@ -1555,107 +1777,602 @@ class _StockTradingPanel extends StatelessWidget {
 }
 
 class _StockTradingWatchlistPanel extends StatelessWidget {
-  const _StockTradingWatchlistPanel({required this.config});
+  const _StockTradingWatchlistPanel({
+    required this.config,
+    required this.selectedSymbol,
+    required this.onSymbolSelected,
+  });
 
   final _StockTradingMarketConfig config;
+  final String selectedSymbol;
+  final ValueChanged<String> onSymbolSelected;
 
   @override
   Widget build(BuildContext context) {
-    final symbols = config.title == '국내 주식'
+    final items = config.badge == 'KRW'
         ? const [
-            ('005930', '삼성전자', '+0.42%'),
-            ('000660', 'SK하이닉스', '-0.18%'),
-            ('035420', 'NAVER', '+1.12%'),
-            ('035720', '카카오', '-0.64%'),
+            _StockTradingWatchlistItem(
+              symbol: '005930',
+              name: '삼성전자',
+              price: '339,500 KRW',
+              change: '+9.34%',
+              changeValue: 9.34,
+              marketCap: '1984.8조원',
+              market: 'KOSPI',
+            ),
+            _StockTradingWatchlistItem(
+              symbol: '000660',
+              name: 'SK하이닉스',
+              price: '2,653,000 KRW',
+              change: '+3.27%',
+              changeValue: 3.27,
+              marketCap: '1890.8조원',
+              market: 'KOSPI',
+            ),
+            _StockTradingWatchlistItem(
+              symbol: '035420',
+              name: 'NAVER',
+              price: '201,000 KRW',
+              change: '+0.60%',
+              changeValue: 0.60,
+              marketCap: '31.5조원',
+              market: 'KOSPI',
+            ),
+            _StockTradingWatchlistItem(
+              symbol: '035720',
+              name: '카카오',
+              price: '34,150 KRW',
+              change: '+0.15%',
+              changeValue: 0.15,
+              marketCap: '15.1조원',
+              market: 'KOSPI',
+            ),
+            _StockTradingWatchlistItem(
+              symbol: '068270',
+              name: '셀트리온',
+              price: '172,900 KRW',
+              change: '+9.03%',
+              changeValue: 9.03,
+              marketCap: '38.0조원',
+              market: 'KOSPI',
+            ),
           ]
         : const [
-            ('NVDA', 'NVIDIA', '+0.05%'),
-            ('AAPL', 'Apple', '-0.21%'),
-            ('MSFT', 'Microsoft', '+0.38%'),
-            ('TSLA', 'Tesla', '+1.44%'),
+            _StockTradingWatchlistItem(
+              symbol: 'NVDA',
+              name: 'NVIDIA',
+              price: '202.30 USD',
+              change: '+1.10%',
+              changeValue: 1.10,
+              marketCap: '4.9T',
+              market: 'NASDAQ',
+            ),
+            _StockTradingWatchlistItem(
+              symbol: 'AAPL',
+              name: 'Apple',
+              price: '297.02 USD',
+              change: '+0.92%',
+              changeValue: 0.92,
+              marketCap: '4.4T',
+              market: 'NASDAQ',
+            ),
+            _StockTradingWatchlistItem(
+              symbol: 'MSFT',
+              name: 'Microsoft',
+              price: '492.14 USD',
+              change: '-0.18%',
+              changeValue: -0.18,
+              marketCap: '3.6T',
+              market: 'NASDAQ',
+            ),
+            _StockTradingWatchlistItem(
+              symbol: 'TSLA',
+              name: 'Tesla',
+              price: '429.90 USD',
+              change: '+0.74%',
+              changeValue: 0.74,
+              marketCap: '1.4T',
+              market: 'NASDAQ',
+            ),
           ];
 
     return _StockTradingPanel(
-      title: '관심종목',
-      icon: Icons.star_border_rounded,
+      title: 'Watchlist',
+      icon: Icons.favorite_border_rounded,
       color: config.color,
       trailing: _StatusPill(text: config.badge, color: config.color),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              decoration: InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search_rounded, color: config.color),
-                hintText: '종목명 · 코드 검색',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              itemBuilder: (context, index) {
-                final item = symbols[index];
-                final positive = item.$3.startsWith('+');
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: config.color.withValues(
-                      alpha: index == 0 ? 0.08 : 0.03,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: config.color.withValues(
-                        alpha: index == 0 ? 0.18 : 0.08,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 520;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                child: TextField(
+                  decoration: InputDecoration(
+                    isDense: true,
+                    prefixIcon: Icon(Icons.search_rounded, color: config.color),
+                    suffixIcon: selectedSymbol.isEmpty
+                        ? null
+                        : const Icon(Icons.tune_rounded, size: 18),
+                    hintText: 'Symbol / Name',
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(
+                        color: KangColors.line.withValues(alpha: 0.95),
                       ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(
+                        color: KangColors.line.withValues(alpha: 0.95),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: config.color),
                     ),
                   ),
-                  child: Row(
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Row(
+                  children: [
+                    _StockTradingWatchlistChip(
+                      text: 'My Watchlist',
+                      selected: true,
+                      color: config.color,
+                    ),
+                    const SizedBox(width: 6),
+                    _StockTradingWatchlistChip(
+                      text: config.badge == 'KRW' ? '국내' : '해외',
+                      selected: false,
+                      color: config.color,
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: '추가',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.add_rounded, size: 20),
+                      onPressed: () {},
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: compact
+                    ? _StockTradingWatchlistCards(
+                        items: items,
+                        selectedSymbol: selectedSymbol,
+                        color: config.color,
+                        onSymbolSelected: onSymbolSelected,
+                      )
+                    : _StockTradingWatchlistTable(
+                        items: items,
+                        selectedSymbol: selectedSymbol,
+                        color: config.color,
+                        onSymbolSelected: onSymbolSelected,
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StockTradingWatchlistItem {
+  const _StockTradingWatchlistItem({
+    required this.symbol,
+    required this.name,
+    required this.price,
+    required this.change,
+    required this.changeValue,
+    required this.marketCap,
+    required this.market,
+  });
+
+  final String symbol;
+  final String name;
+  final String price;
+  final String change;
+  final double changeValue;
+  final String marketCap;
+  final String market;
+}
+
+class _StockTradingWatchlistChip extends StatelessWidget {
+  const _StockTradingWatchlistChip({
+    required this.text,
+    required this.selected,
+    required this.color,
+  });
+
+  final String text;
+  final bool selected;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: selected ? color : const Color(0xFFF3F6FA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: selected
+              ? color.withValues(alpha: 0.3)
+              : KangColors.line.withValues(alpha: 0.9),
+        ),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: selected ? Colors.white : KangColors.slate,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _StockTradingWatchlistTable extends StatelessWidget {
+  const _StockTradingWatchlistTable({
+    required this.items,
+    required this.selectedSymbol,
+    required this.color,
+    required this.onSymbolSelected,
+  });
+
+  final List<_StockTradingWatchlistItem> items;
+  final String selectedSymbol;
+  final Color color;
+  final ValueChanged<String> onSymbolSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: const BoxDecoration(
+            color: Color(0xFFF8FAFC),
+            border: Border.symmetric(
+              horizontal: BorderSide(color: Color(0xFFE8EDF3)),
+            ),
+          ),
+          child: const Row(
+            children: [
+              SizedBox(width: 42, child: Text('No.')),
+              Expanded(flex: 3, child: Text('Symbol')),
+              Expanded(flex: 2, child: Text('Last Price')),
+              Expanded(flex: 2, child: Text('Change')),
+              Expanded(flex: 2, child: Text('Market Cap')),
+              SizedBox(width: 76, child: Text('Market')),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.only(bottom: 8),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final selected = item.symbol == selectedSymbol;
+              return _StockTradingWatchlistTableRow(
+                index: index,
+                item: item,
+                selected: selected,
+                color: color,
+                onTap: () => onSymbolSelected(item.symbol),
+              );
+            },
+            separatorBuilder: (_, _) =>
+                const Divider(height: 1, color: Color(0xFFE8EDF3)),
+            itemCount: items.length,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StockTradingWatchlistTableRow extends StatelessWidget {
+  const _StockTradingWatchlistTableRow({
+    required this.index,
+    required this.item,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  final int index;
+  final _StockTradingWatchlistItem item;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final changeColor = _stockChangeColor(item.changeValue);
+    return Material(
+      color: selected ? color.withValues(alpha: 0.08) : Colors.white,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 54,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            border: selected
+                ? Border(left: BorderSide(color: color, width: 3))
+                : null,
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 42,
+                child: Row(
+                  children: [
+                    Icon(
+                      selected
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      size: 16,
+                      color: selected ? _stockRiseColor : KangColors.slate,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        color: KangColors.ink,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Row(
+                  children: [
+                    _StockTradingSymbolAvatar(
+                      symbol: item.symbol,
+                      name: item.name,
+                      selected: selected,
+                      color: color,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: KangColors.ink,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item.symbol,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: KangColors.slate),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  item.price,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: KangColors.ink,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  item.change,
+                  style: TextStyle(
+                    color: changeColor,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  item.marketCap,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: KangColors.ink,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 76,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _StatusPill(text: item.market, color: color),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StockTradingWatchlistCards extends StatelessWidget {
+  const _StockTradingWatchlistCards({
+    required this.items,
+    required this.selectedSymbol,
+    required this.color,
+    required this.onSymbolSelected,
+  });
+
+  final List<_StockTradingWatchlistItem> items;
+  final String selectedSymbol;
+  final Color color;
+  final ValueChanged<String> onSymbolSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final selected = item.symbol == selectedSymbol;
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => onSymbolSelected(item.symbol),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: selected
+                    ? color.withValues(alpha: 0.08)
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selected
+                      ? color.withValues(alpha: 0.3)
+                      : KangColors.line.withValues(alpha: 0.9),
+                ),
+              ),
+              child: Row(
+                children: [
+                  _StockTradingSymbolAvatar(
+                    symbol: item.symbol,
+                    name: item.name,
+                    selected: selected,
+                    color: color,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: KangColors.ink,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          item.symbol,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: KangColors.slate),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.$1,
-                              style: const TextStyle(
-                                color: KangColors.ink,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              item.$2,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: KangColors.slate),
-                            ),
-                          ],
+                      Text(
+                        item.price,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: KangColors.ink,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
+                      const SizedBox(height: 3),
                       Text(
-                        item.$3,
+                        item.change,
                         style: TextStyle(
-                          color: positive
-                              ? KangColors.mintDeep
-                              : Colors.red.shade600,
+                          color: _stockChangeColor(item.changeValue),
                           fontWeight: FontWeight.w900,
                         ),
                       ),
                     ],
                   ),
-                );
-              },
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemCount: symbols.length,
+                ],
+              ),
             ),
           ),
+        );
+      },
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemCount: items.length,
+    );
+  }
+}
+
+class _StockTradingSymbolAvatar extends StatelessWidget {
+  const _StockTradingSymbolAvatar({
+    required this.symbol,
+    required this.name,
+    required this.selected,
+    required this.color,
+  });
+
+  final String symbol;
+  final String name;
+  final bool selected;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final source = name.isNotEmpty ? name : symbol;
+    final label = source.isNotEmpty
+        ? source.substring(0, 1).toUpperCase()
+        : '?';
+    return Container(
+      width: 32,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: selected ? color : _stockAvatarColor(symbol),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.ink.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
         ],
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
@@ -1846,14 +2563,19 @@ class _StockTradingChartPlaceholder extends StatefulWidget {
 
 class _StockTradingChartPlaceholderState
     extends State<_StockTradingChartPlaceholder> {
-  static const _maxVisibleCandles = 90;
+  static const _minVisibleCandles = 24;
+  static const _defaultVisibleCandles = 90;
+  static const _maxVisibleCandles = 180;
   static const _scrollPixelsPerCandle = 18.0;
+  static const _zoomStep = 1.18;
 
+  final _chartViewportKey = GlobalKey();
   List<TossCandle> _olderCandles = const [];
   String? _nextBefore;
   var _loadingOlderCandles = false;
   var _hasOlderCandles = true;
   int? _viewportStart;
+  int _visibleCandleTarget = _defaultVisibleCandles;
   int _lastCandleCount = 0;
   int _lastVisibleCount = 0;
   double _dragRemainder = 0;
@@ -1867,11 +2589,13 @@ class _StockTradingChartPlaceholderState
       _nextBefore = null;
       _hasOlderCandles = true;
       _viewportStart = null;
+      _visibleCandleTarget = _defaultVisibleCandles;
       _dragRemainder = 0;
       return;
     }
     if (oldWidget.selectedInterval != widget.selectedInterval) {
       _viewportStart = null;
+      _visibleCandleTarget = _defaultVisibleCandles;
       _dragRemainder = 0;
     }
   }
@@ -1887,7 +2611,10 @@ class _StockTradingChartPlaceholderState
       rawCandles,
       widget.selectedInterval,
     );
-    final visibleCount = math.min(_maxVisibleCandles, allCandles.length);
+    final visibleLimit = _visibleCandleTarget
+        .clamp(_minVisibleCandles, _maxVisibleCandles)
+        .toInt();
+    final visibleCount = math.min(visibleLimit, allCandles.length);
     final maxStart = math.max(0, allCandles.length - visibleCount);
     final viewportStart = (_viewportStart ?? maxStart).clamp(0, maxStart);
     final viewportEnd = math.min(
@@ -1899,6 +2626,10 @@ class _StockTradingChartPlaceholderState
         : const <TossCandle>[];
     _lastCandleCount = allCandles.length;
     _lastVisibleCount = visibleCount;
+    final minZoomVisible = math.min(_minVisibleCandles, allCandles.length);
+    final maxZoomVisible = math.min(_maxVisibleCandles, allCandles.length);
+    final canZoomIn = visibleCount > minZoomVisible;
+    final canZoomOut = visibleCount < maxZoomVisible;
 
     final latestCandle = candles.isEmpty ? null : candles.last;
     final previousCandle = allCandles.length >= 2 && viewportEnd >= 2
@@ -2033,11 +2764,13 @@ class _StockTradingChartPlaceholderState
               children: [
                 Positioned.fill(
                   child: Listener(
+                    key: _chartViewportKey,
                     onPointerSignal: _handleChartPointerSignal,
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onHorizontalDragUpdate: _handleChartDragUpdate,
                       onHorizontalDragEnd: (_) => _dragRemainder = 0,
+                      onDoubleTap: _resetChartViewport,
                       child: CustomPaint(
                         painter: _StockTradingCandleChartPainter(
                           color: widget.color,
@@ -2048,6 +2781,19 @@ class _StockTradingChartPlaceholderState
                     ),
                   ),
                 ),
+                if (allCandles.isNotEmpty)
+                  Positioned(
+                    top: 10,
+                    left: 12,
+                    child: _StockTradingChartToolbar(
+                      color: widget.color,
+                      canZoomIn: canZoomIn,
+                      canZoomOut: canZoomOut,
+                      onZoomIn: () => _zoomViewport(1 / _zoomStep, 0.5),
+                      onZoomOut: () => _zoomViewport(_zoomStep, 0.5),
+                      onReset: _resetChartViewport,
+                    ),
+                  ),
                 if (_loadingOlderCandles)
                   const Positioned(
                     left: 14,
@@ -2090,14 +2836,91 @@ class _StockTradingChartPlaceholderState
     if (event is! PointerScrollEvent) {
       return;
     }
-    final primaryDelta = event.scrollDelta.dx.abs() > event.scrollDelta.dy.abs()
-        ? event.scrollDelta.dx
-        : event.scrollDelta.dy;
-    if (primaryDelta == 0) {
+    GestureBinding.instance.pointerSignalResolver.register(event, (
+      resolvedEvent,
+    ) {
+      _handleResolvedChartScroll(resolvedEvent as PointerScrollEvent);
+    });
+  }
+
+  void _handleResolvedChartScroll(PointerScrollEvent event) {
+    final delta = event.scrollDelta;
+    if (delta.dx.abs() > delta.dy.abs()) {
+      _shiftViewportByWheel(delta.dx);
       return;
     }
-    final steps = math.max(1, (primaryDelta.abs() / 40).ceil());
-    _shiftViewport(primaryDelta > 0 ? -steps : steps);
+    if (delta.dy == 0) {
+      return;
+    }
+    final notches = (delta.dy.abs() / 90).clamp(0.25, 5.0).toDouble();
+    final scale = math.pow(_zoomStep, notches).toDouble();
+    _zoomViewport(
+      delta.dy > 0 ? scale : 1 / scale,
+      _chartAnchorFraction(event.localPosition),
+    );
+  }
+
+  void _shiftViewportByWheel(double pixels) {
+    if (pixels == 0) {
+      return;
+    }
+    final steps = math.max(1, (pixels.abs() / 40).ceil());
+    _shiftViewport(pixels > 0 ? -steps : steps);
+  }
+
+  void _zoomViewport(double scale, double anchorFraction) {
+    if (_lastCandleCount == 0 || _lastVisibleCount == 0) {
+      return;
+    }
+    final currentVisible = math.min(_lastVisibleCount, _lastCandleCount);
+    final minVisible = math.min(_minVisibleCandles, _lastCandleCount);
+    final maxVisible = math.min(_maxVisibleCandles, _lastCandleCount);
+    final nextVisible = (currentVisible * scale)
+        .round()
+        .clamp(minVisible, maxVisible)
+        .toInt();
+    if (nextVisible == currentVisible) {
+      return;
+    }
+
+    final maxStart = math.max(0, _lastCandleCount - currentVisible);
+    final currentStart = (_viewportStart ?? maxStart).clamp(0, maxStart);
+    final anchor = anchorFraction.clamp(0.0, 1.0).toDouble();
+    final anchoredIndex = currentStart + (currentVisible - 1) * anchor;
+    final nextMaxStart = math.max(0, _lastCandleCount - nextVisible);
+    final nextStart = (anchoredIndex - (nextVisible - 1) * anchor)
+        .round()
+        .clamp(0, nextMaxStart)
+        .toInt();
+
+    setState(() {
+      _visibleCandleTarget = nextVisible;
+      _viewportStart = nextStart == nextMaxStart ? null : nextStart;
+      _dragRemainder = 0;
+    });
+    if (nextStart <= 2) {
+      _loadOlderCandles();
+    }
+  }
+
+  void _resetChartViewport() {
+    setState(() {
+      _visibleCandleTarget = _defaultVisibleCandles;
+      _viewportStart = null;
+      _dragRemainder = 0;
+    });
+  }
+
+  double _chartAnchorFraction(Offset localPosition) {
+    final size = _chartViewportKey.currentContext?.size;
+    if (size == null || size.width <= 78) {
+      return 0.5;
+    }
+    const plotLeft = 10.0;
+    final plotWidth = math.max(1.0, size.width - 78.0);
+    return ((localPosition.dx - plotLeft) / plotWidth)
+        .clamp(0.0, 1.0)
+        .toDouble();
   }
 
   void _shiftViewport(int delta) {
@@ -2117,7 +2940,7 @@ class _StockTradingChartPlaceholderState
       }
       return;
     }
-    setState(() => _viewportStart = next);
+    setState(() => _viewportStart = next == maxStart ? null : next);
     if (next <= 2 && delta < 0) {
       _loadOlderCandles();
     }
@@ -2351,6 +3174,107 @@ class _StockTradingChartMetric extends StatelessWidget {
   }
 }
 
+class _StockTradingChartToolbar extends StatelessWidget {
+  const _StockTradingChartToolbar({
+    required this.color,
+    required this.canZoomIn,
+    required this.canZoomOut,
+    required this.onZoomIn,
+    required this.onZoomOut,
+    required this.onReset,
+  });
+
+  final Color color;
+  final bool canZoomIn;
+  final bool canZoomOut;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: KangColors.line.withValues(alpha: 0.84)),
+        boxShadow: [
+          BoxShadow(
+            color: KangColors.ink.withValues(alpha: 0.07),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _StockTradingChartToolButton(
+              icon: Icons.zoom_in_rounded,
+              tooltip: '확대',
+              color: color,
+              enabled: canZoomIn,
+              onTap: onZoomIn,
+            ),
+            _StockTradingChartToolButton(
+              icon: Icons.zoom_out_rounded,
+              tooltip: '축소',
+              color: color,
+              enabled: canZoomOut,
+              onTap: onZoomOut,
+            ),
+            _StockTradingChartToolButton(
+              icon: Icons.center_focus_strong_rounded,
+              tooltip: '최신 보기',
+              color: color,
+              enabled: true,
+              onTap: onReset,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StockTradingChartToolButton extends StatelessWidget {
+  const _StockTradingChartToolButton({
+    required this.icon,
+    required this.tooltip,
+    required this.color,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final Color color;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = enabled
+        ? color
+        : KangColors.slate.withValues(alpha: 0.38);
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 350),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: enabled ? onTap : null,
+        child: SizedBox(
+          width: 32,
+          height: 30,
+          child: Icon(icon, size: 18, color: iconColor),
+        ),
+      ),
+    );
+  }
+}
+
 class _StockTradingOrderPanel extends StatelessWidget {
   const _StockTradingOrderPanel({required this.config});
 
@@ -2533,6 +3457,19 @@ Color _stockChangeColor(double? value) {
     return KangColors.slate;
   }
   return value > 0 ? _stockRiseColor : _stockFallColor;
+}
+
+Color _stockAvatarColor(String symbol) {
+  const colors = [
+    Color(0xFF1D4ED8),
+    Color(0xFF059669),
+    Color(0xFFDB2777),
+    Color(0xFFF59E0B),
+    Color(0xFF7C3AED),
+    Color(0xFF0F766E),
+  ];
+  final seed = symbol.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
+  return colors[seed % colors.length];
 }
 
 double? _stockDoubleValue(String? value) {
@@ -2792,7 +3729,12 @@ class _StockTradingCandleChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final chartRect = Rect.fromLTWH(10, 8, size.width - 78, size.height - 70);
+    final chartRect = Rect.fromLTWH(
+      10,
+      8,
+      math.max(1, size.width - 78),
+      math.max(1, size.height - 70),
+    );
     final volumeRect = Rect.fromLTWH(
       chartRect.left,
       chartRect.bottom + 10,
@@ -2861,7 +3803,10 @@ class _StockTradingCandleChartPainter extends CustomPainter {
     }
 
     final step = chartRect.width / parsed.length;
-    final candleWidth = math.max(2.4, math.min(8.0, step * 0.58));
+    final candleWidth = math.max(2.2, math.min(16.0, step * 0.66));
+    final candleRadius = Radius.circular(
+      math.max(1.5, math.min(3.0, candleWidth * 0.18)),
+    );
     for (var i = 0; i < parsed.length; i++) {
       final candle = parsed[i];
       final centerX = chartRect.left + step * (i + 0.5);
@@ -2891,11 +3836,14 @@ class _StockTradingCandleChartPainter extends CustomPainter {
             centerX + candleWidth / 2,
             math.max(openY, closeY),
           ),
-          const Radius.circular(1.5),
+          candleRadius,
         ),
         Paint()..color = candleColor,
       );
-      final volumeHeight = (candle.volume / maxVolume) * volumeRect.height;
+      final rawVolumeHeight = (candle.volume / maxVolume) * volumeRect.height;
+      final volumeHeight = rawVolumeHeight <= 0
+          ? 0.0
+          : math.max(1.0, rawVolumeHeight);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(
@@ -2904,7 +3852,7 @@ class _StockTradingCandleChartPainter extends CustomPainter {
             candleWidth,
             volumeHeight,
           ),
-          const Radius.circular(1.5),
+          candleRadius,
         ),
         Paint()..color = candleColor.withValues(alpha: 0.22),
       );
