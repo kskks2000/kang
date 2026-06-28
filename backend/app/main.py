@@ -115,12 +115,13 @@ def toss_stock_dashboard(
     symbols: Optional[str] = None,
     candle_interval: str = Query("1m", alias="candleInterval"),
 ) -> dict:
-    _require_firebase_bearer_token(request)
+    claims = _require_firebase_bearer_token(request)
     return load_toss_stock_dashboard(
         market=market,
         symbol=symbol,
         symbols=symbols,
         candle_interval=candle_interval,
+        user_email=str(claims.get("email") or ""),
     )
 
 

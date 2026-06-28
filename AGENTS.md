@@ -22,6 +22,7 @@
 - `backend/app/settings.py`: 환경값 로딩과 DB 연결 제한을 담당합니다.
 - `backend/app/schemas.py`: API 요청/응답 모델입니다.
 - `database/`: 운영 DB 스키마와 마이그레이션 SQL입니다.
+- `docs/stock_trading_dashboard_status.md`: 주식 거래 대시보드의 완료 항목, 구현 메모, 다음 작업 전 확인 사항입니다. 주식 거래 화면을 수정하기 전 반드시 먼저 읽습니다.
 
 ## 중요한 계약
 
@@ -37,6 +38,12 @@
 - 토스증권 Open API 주문 생성, 정정, 취소는 사용자가 명시적으로 요청한 경우에만 연결합니다. 실제 주문 전송은 Firebase 인증, `TOSSINVEST_TRADING_ENABLED=true`, `TOSSINVEST_TRADING_ALLOWED_EMAILS` 허용 목록, 프론트엔드 최종 확인 모달 또는 정정/취소 확인창을 모두 거쳐야 합니다.
 - `TOSSINVEST_CLIENT_ID`, `TOSSINVEST_CLIENT_SECRET`, `TOSSINVEST_ACCOUNT`, `TOSSINVEST_TRADING_ALLOWED_EMAILS`는 비밀값 또는 개인정보로 취급하고 로그, 문서, diff에 실제 값을 노출하지 마세요.
 - 운영 서버의 공인 IP가 토스증권 Open API 콘솔 허용 IP에 등록되어 있어야 합니다. 운영 확인 중 `IP address not allowed`가 나오면 코드보다 토스 콘솔 IP 허용 목록을 먼저 확인하세요.
+
+## 주식 거래 대시보드 작업 전 확인
+
+- 주식 거래 대시보드, 토스증권 연동, 종목 검색, 종목 아이콘, 차트, 주문, 체결/미체결/잔고, 현재가/등락률 표시를 수정하기 전에는 반드시 `docs/stock_trading_dashboard_status.md`를 먼저 읽습니다.
+- 해당 문서에는 이미 적용 완료된 1~10번 항목, 관련 코드 위치, 운영 배포/검증 기준이 정리되어 있습니다.
+- 기존 적용 완료 항목을 되돌리거나 중복 구현하지 말고, 현재 코드와 운영 동작을 확인한 뒤 필요한 부분만 좁게 수정합니다.
 
 ## 개발 명령
 

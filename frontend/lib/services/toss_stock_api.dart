@@ -193,7 +193,7 @@ class TossStockApi {
     final idToken = await user?.getIdToken();
     if (idToken == null || idToken.isEmpty) {
       throw const TossStockApiException(
-        '濡쒓렇???몄쬆??留뚮즺?섏뿀?듬땲?? ?ㅼ떆 濡쒓렇?명빐 二쇱꽭??',
+        '로그인 인증이 만료되었습니다. 다시 로그인해 주세요.',
       );
     }
 
@@ -221,7 +221,7 @@ class TossStockApi {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final detail = decoded['detail']?.toString();
       throw TossStockApiException(
-        detail?.isNotEmpty == true ? detail! : '?좎뒪利앷텒 李⑦듃瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??',
+        detail?.isNotEmpty == true ? detail! : '토스증권 차트를 불러오지 못했습니다.',
       );
     }
     return TossStockCandlesResult.fromJson(decoded);
@@ -454,6 +454,7 @@ class TossStockDashboard {
     required this.candles,
     required this.holdings,
     required this.openOrders,
+    required this.executions,
     required this.buyingPower,
     required this.errors,
   });
@@ -468,6 +469,7 @@ class TossStockDashboard {
   final List<TossCandle> candles;
   final List<TossHolding> holdings;
   final List<TossOpenOrder> openOrders;
+  final List<TossExecution> executions;
   final List<TossBuyingPower> buyingPower;
   final List<String> errors;
 
@@ -517,6 +519,10 @@ class TossStockDashboard {
       openOrders: (json['openOrders'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(TossOpenOrder.fromJson)
+          .toList(growable: false),
+      executions: (json['executions'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TossExecution.fromJson)
           .toList(growable: false),
       buyingPower: (json['buyingPower'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
@@ -569,8 +575,13 @@ class TossStockSummary {
     required this.selectedAccountMasked,
     required this.holdingCount,
     required this.openOrderCount,
+    required this.executionCount,
     required this.buyingPowerKrw,
     required this.buyingPowerUsd,
+    required this.tradingEnabled,
+    required this.tradingAllowed,
+    required this.tradingAvailable,
+    required this.tradingBlockedReason,
   });
 
   final String market;
@@ -581,8 +592,13 @@ class TossStockSummary {
   final String selectedAccountMasked;
   final int holdingCount;
   final int openOrderCount;
+  final int executionCount;
   final String buyingPowerKrw;
   final String buyingPowerUsd;
+  final bool tradingEnabled;
+  final bool tradingAllowed;
+  final bool tradingAvailable;
+  final String tradingBlockedReason;
 
   factory TossStockSummary.fromJson(Map<String, dynamic> json) {
     return TossStockSummary(
@@ -594,8 +610,13 @@ class TossStockSummary {
       selectedAccountMasked: json['selectedAccountMasked'] as String? ?? '',
       holdingCount: json['holdingCount'] as int? ?? 0,
       openOrderCount: json['openOrderCount'] as int? ?? 0,
+      executionCount: json['executionCount'] as int? ?? 0,
       buyingPowerKrw: json['buyingPowerKrw'] as String? ?? '',
       buyingPowerUsd: json['buyingPowerUsd'] as String? ?? '',
+      tradingEnabled: json['tradingEnabled'] as bool? ?? false,
+      tradingAllowed: json['tradingAllowed'] as bool? ?? false,
+      tradingAvailable: json['tradingAvailable'] as bool? ?? false,
+      tradingBlockedReason: json['tradingBlockedReason'] as String? ?? '',
     );
   }
 }
@@ -813,6 +834,59 @@ class TossOpenOrder {
       price: json['price'] as String? ?? '',
       currency: json['currency'] as String? ?? '',
       orderedAt: json['orderedAt'] as String? ?? '',
+    );
+  }
+}
+
+class TossExecution {
+  const TossExecution({
+    required this.orderId,
+    required this.symbol,
+    required this.side,
+    required this.status,
+    required this.orderType,
+    required this.quantity,
+    required this.price,
+    required this.filledQuantity,
+    required this.averageFilledPrice,
+    required this.filledAmount,
+    required this.currency,
+    required this.orderedAt,
+    required this.filledAt,
+    required this.settlementDate,
+  });
+
+  final String orderId;
+  final String symbol;
+  final String side;
+  final String status;
+  final String orderType;
+  final String quantity;
+  final String price;
+  final String filledQuantity;
+  final String averageFilledPrice;
+  final String filledAmount;
+  final String currency;
+  final String orderedAt;
+  final String filledAt;
+  final String settlementDate;
+
+  factory TossExecution.fromJson(Map<String, dynamic> json) {
+    return TossExecution(
+      orderId: json['orderId'] as String? ?? '',
+      symbol: json['symbol'] as String? ?? '',
+      side: json['side'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+      orderType: json['orderType'] as String? ?? '',
+      quantity: json['quantity'] as String? ?? '',
+      price: json['price'] as String? ?? '',
+      filledQuantity: json['filledQuantity'] as String? ?? '',
+      averageFilledPrice: json['averageFilledPrice'] as String? ?? '',
+      filledAmount: json['filledAmount'] as String? ?? '',
+      currency: json['currency'] as String? ?? '',
+      orderedAt: json['orderedAt'] as String? ?? '',
+      filledAt: json['filledAt'] as String? ?? '',
+      settlementDate: json['settlementDate'] as String? ?? '',
     );
   }
 }

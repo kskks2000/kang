@@ -120,6 +120,7 @@ def load_toss_stock_dashboard(
     symbol: Optional[str] = None,
     symbols: Optional[str] = None,
     candle_interval: str = "1m",
+    user_email: Optional[str] = None,
 ) -> dict[str, Any]:
     market_code = _market_code(market)
     primary_symbol = _primary_symbol(market_code, symbol)
@@ -156,8 +157,10 @@ def load_toss_stock_dashboard(
     watchlist: list[dict[str, Any]] = []
     orderbook: Optional[dict[str, Any]] = None
     candles: list[dict[str, Any]] = []
+    raw_candles: list[dict[str, Any]] = []
     holdings: list[dict[str, Any]] = []
     open_orders: list[dict[str, Any]] = []
+    executions: list[dict[str, Any]] = []
     buying_power: list[dict[str, str]] = []
 
     try:
@@ -203,11 +206,33 @@ def load_toss_stock_dashboard(
             },
         )
         raw_candles = candle_result.get("candles", []) if isinstance(candle_result, dict) else []
-        candles = [_candle(item) for item in raw_candles if isinstance(item, dict)]
-        _apply_primary_candle_change(watchlist, primary_symbol, raw_candles)
+        candles = _sort_candles([_candle(item) for item in raw_candles if isinstance(item, dict)])
     except Exception as exc:  # noqa: BLE001
         if not _is_rate_limit_error(exc):
             errors.append(f"차트: {_safe_error(exc)}")
+
+    try:
+        daily_change_candles = raw_candles if candle_interval == "1d" else []
+        if not daily_change_candles:
+            daily_change_result = _api_get(
+                "/api/v1/candles",
+                params={
+                    "symbol": primary_symbol,
+                    "interval": "1d",
+                    "count": "2",
+                    "adjusted": "true",
+                },
+            )
+            daily_change_candles = (
+                daily_change_result.get("candles", [])
+                if isinstance(daily_change_result, dict)
+                else []
+            )
+        _apply_primary_candle_change(watchlist, primary_symbol, daily_change_candles)
+        _apply_watchlist_candle_changes(watchlist, primary_symbol)
+    except Exception as exc:  # noqa: BLE001
+        if not _is_rate_limit_error(exc):
+            errors.append(f"일일 등락: {_safe_error(exc)}")
 
     if selected_account_seq is not None:
         try:
@@ -225,8 +250,32 @@ def load_toss_stock_dashboard(
             )
             raw_orders = orders_result.get("orders", []) if isinstance(orders_result, dict) else []
             open_orders = [_open_order(item) for item in raw_orders if isinstance(item, dict)]
+            executions.extend(
+                _order_execution(item)
+                for item in raw_orders
+                if isinstance(item, dict) and _has_order_execution(item)
+            )
         except Exception as exc:  # noqa: BLE001
             errors.append(f"미체결 주문: {_safe_error(exc)}")
+
+        try:
+            executions_result = _api_get(
+                "/api/v1/orders",
+                params={"status": "CLOSED", "limit": "20"},
+                account_seq=selected_account_seq,
+            )
+            raw_executions = (
+                executions_result.get("orders", [])
+                if isinstance(executions_result, dict)
+                else []
+            )
+            executions.extend(
+                _order_execution(item)
+                for item in raw_executions
+                if isinstance(item, dict) and _has_order_execution(item)
+            )
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"체결 주문: {_safe_error(exc)}")
 
         for currency in ("KRW", "USD"):
             try:
@@ -255,6 +304,7 @@ def load_toss_stock_dashboard(
         now,
         status=status,
         primary_symbol=primary_symbol,
+        user_email=user_email,
         accounts=accounts,
         selected_account=selected_account,
         watchlist=watchlist,
@@ -262,6 +312,7 @@ def load_toss_stock_dashboard(
         candles=candles,
         holdings=holdings,
         open_orders=open_orders,
+        executions=_unique_sorted_executions(executions),
         buying_power=buying_power,
         errors=errors,
     )
@@ -283,7 +334,7 @@ def load_toss_stock_candles(
     candle_interval = _candle_interval(candle_interval)
     bounded_count = max(1, min(_safe_int(count, default=200), 200))
     if not settings.tossinvest_client_id or not settings.tossinvest_client_secret:
-        raise ValueError("?좎뒪利앷텒 Open API ?ㅺ? ?ㅼ젙?섏? ?딆븯?듬땲??")
+        raise ValueError("토스증권 Open API 키가 설정되지 않았습니다.")
 
     params = {
         "symbol": primary_symbol,
@@ -299,7 +350,7 @@ def load_toss_stock_candles(
     raw_candles = (
         candle_result.get("candles", []) if isinstance(candle_result, dict) else []
     )
-    candles = [_candle(item) for item in raw_candles if isinstance(item, dict)]
+    candles = _sort_candles([_candle(item) for item in raw_candles if isinstance(item, dict)])
     next_before = (
         str(candle_result.get("nextBefore") or "")
         if isinstance(candle_result, dict)
@@ -486,6 +537,46 @@ def _ensure_trading_allowed(user_email: str) -> None:
         raise PermissionError("실제 주문 허용 이메일이 설정되지 않았습니다.")
     if normalized_email not in allowed_emails:
         raise PermissionError("이 계정은 실제 주문 권한이 없습니다.")
+
+
+def _trading_allowed_for_user(user_email: Optional[str]) -> bool:
+    normalized_email = (user_email or "").strip().lower()
+    return bool(
+        normalized_email
+        and settings.tossinvest_trading_allowed_emails
+        and normalized_email in settings.tossinvest_trading_allowed_emails
+    )
+
+
+def _trading_status(
+    *,
+    user_email: Optional[str],
+    selected_account_seq: Optional[int],
+) -> dict[str, Any]:
+    enabled = bool(settings.tossinvest_trading_enabled)
+    allowed = _trading_allowed_for_user(user_email)
+    has_api_keys = bool(settings.tossinvest_client_id and settings.tossinvest_client_secret)
+    has_account = selected_account_seq is not None
+    available = bool(enabled and allowed and has_api_keys and has_account)
+
+    blocked_reason: Optional[str] = None
+    if not enabled:
+        blocked_reason = "서버의 실제 주문 기능이 비활성화되어 있습니다."
+    elif not settings.tossinvest_trading_allowed_emails:
+        blocked_reason = "실제 주문 허용 이메일이 설정되지 않았습니다."
+    elif not allowed:
+        blocked_reason = "이 로그인 계정에는 실제 주문 권한이 없습니다."
+    elif not has_api_keys:
+        blocked_reason = "토스증권 Open API 키가 설정되지 않았습니다."
+    elif not has_account:
+        blocked_reason = "주문에 사용할 토스증권 계좌를 찾지 못했습니다."
+
+    return {
+        "tradingEnabled": enabled,
+        "tradingAllowed": allowed,
+        "tradingAvailable": available,
+        "tradingBlockedReason": blocked_reason,
+    }
 
 
 def _selected_account_seq_for_trading() -> int:
@@ -687,11 +778,70 @@ def _apply_primary_candle_change(
     for quote in watchlist:
         if quote.get("symbol") != primary_symbol:
             continue
-        candle_change = _price_change(_safe_float(quote.get("lastPrice")), raw_candles)
-        quote["previousClose"] = _decimal_string(candle_change.get("previousClose"))
-        quote["change"] = _decimal_string(candle_change.get("change"))
-        quote["changePercent"] = _decimal_string(candle_change.get("changePercent"))
+        _apply_candle_change_to_quote(quote, raw_candles)
         return
+
+
+def _apply_watchlist_candle_changes(
+    watchlist: list[dict[str, Any]],
+    primary_symbol: str,
+) -> None:
+    for quote in watchlist:
+        symbol = str(quote.get("symbol") or "").strip().upper()
+        if not symbol or symbol == primary_symbol:
+            continue
+        if str(quote.get("changePercent") or "").strip():
+            continue
+        try:
+            candle_result = _api_get(
+                "/api/v1/candles",
+                params={
+                    "symbol": symbol,
+                    "interval": "1d",
+                    "count": "30",
+                    "adjusted": "true",
+                },
+            )
+        except Exception:
+            continue
+        raw_candles = (
+            candle_result.get("candles", [])
+            if isinstance(candle_result, dict)
+            else []
+        )
+        _apply_candle_change_to_quote(quote, raw_candles)
+
+
+def _apply_candle_change_to_quote(
+    quote: dict[str, Any],
+    raw_candles: list[dict[str, Any]],
+) -> None:
+    if not raw_candles:
+        return
+    latest_candle = _latest_candle(raw_candles)
+    latest_close = _safe_float(latest_candle.get("closePrice")) if latest_candle else None
+    if not str(quote.get("lastPrice") or "").strip() and latest_close is not None:
+        quote["lastPrice"] = _decimal_string(latest_close)
+        quote["timestamp"] = quote.get("timestamp") or latest_candle.get("timestamp")
+        if not str(quote.get("currency") or "").strip():
+            quote["currency"] = str(latest_candle.get("currency") or "")
+        shares_outstanding = _safe_float(quote.get("sharesOutstanding"))
+        if (
+            not str(quote.get("marketCap") or "").strip()
+            and shares_outstanding is not None
+        ):
+            quote["marketCap"] = _decimal_string(latest_close * shares_outstanding)
+    candle_change = _price_change(_safe_float(quote.get("lastPrice")), raw_candles)
+    quote["previousClose"] = _decimal_string(candle_change.get("previousClose"))
+    quote["change"] = _decimal_string(candle_change.get("change"))
+    quote["changePercent"] = _decimal_string(candle_change.get("changePercent"))
+
+
+def _latest_candle(raw_candles: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    candles = [item for item in raw_candles if isinstance(item, dict)]
+    if not candles:
+        return None
+    return sorted(candles, key=lambda item: str(item.get("timestamp") or ""))[-1]
 
 
 def _stock_quote(
@@ -791,6 +941,10 @@ def _candle(raw: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _sort_candles(candles: list[dict[str, str]]) -> list[dict[str, str]]:
+    return sorted(candles, key=lambda item: str(item.get("timestamp") or ""))
+
+
 def _holding(raw: dict[str, Any]) -> dict[str, Any]:
     market_value = raw.get("marketValue") if isinstance(raw.get("marketValue"), dict) else {}
     profit_loss = raw.get("profitLoss") if isinstance(raw.get("profitLoss"), dict) else {}
@@ -825,6 +979,58 @@ def _open_order(raw: dict[str, Any]) -> dict[str, str]:
         "currency": str(raw.get("currency") or ""),
         "orderedAt": str(raw.get("orderedAt") or ""),
     }
+
+
+def _has_order_execution(raw: dict[str, Any]) -> bool:
+    execution = raw.get("execution") if isinstance(raw.get("execution"), dict) else {}
+    filled_quantity = _safe_float(execution.get("filledQuantity"))
+    filled_amount = _safe_float(execution.get("filledAmount"))
+    return (
+        (filled_quantity is not None and filled_quantity > 0)
+        or (filled_amount is not None and filled_amount > 0)
+        or bool(execution.get("filledAt"))
+    )
+
+
+def _order_execution(raw: dict[str, Any]) -> dict[str, Any]:
+    execution = raw.get("execution") if isinstance(raw.get("execution"), dict) else {}
+    return {
+        "orderId": str(raw.get("orderId") or ""),
+        "symbol": str(raw.get("symbol") or ""),
+        "side": str(raw.get("side") or ""),
+        "status": str(raw.get("status") or ""),
+        "orderType": str(raw.get("orderType") or ""),
+        "quantity": str(raw.get("quantity") or ""),
+        "price": str(raw.get("price") or ""),
+        "filledQuantity": str(execution.get("filledQuantity") or ""),
+        "averageFilledPrice": str(execution.get("averageFilledPrice") or ""),
+        "filledAmount": str(execution.get("filledAmount") or ""),
+        "currency": str(raw.get("currency") or ""),
+        "orderedAt": str(raw.get("orderedAt") or ""),
+        "filledAt": execution.get("filledAt"),
+        "settlementDate": execution.get("settlementDate"),
+    }
+
+
+def _unique_sorted_executions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
+    for execution in executions:
+        key = str(execution.get("orderId") or "").strip()
+        if not key:
+            key = ":".join(
+                [
+                    str(execution.get("symbol") or ""),
+                    str(execution.get("filledAt") or ""),
+                    str(execution.get("orderedAt") or ""),
+                ]
+            )
+        by_key[key] = execution
+
+    return sorted(
+        by_key.values(),
+        key=lambda item: str(item.get("filledAt") or item.get("orderedAt") or ""),
+        reverse=True,
+    )[:20]
 
 
 def _select_account(accounts: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -879,6 +1085,7 @@ def _dashboard_response(
     *,
     status: str,
     primary_symbol: str,
+    user_email: Optional[str] = None,
     accounts: list[dict[str, Any]],
     selected_account: Optional[dict[str, Any]],
     watchlist: list[dict[str, Any]],
@@ -886,10 +1093,16 @@ def _dashboard_response(
     candles: list[dict[str, Any]],
     holdings: list[dict[str, Any]],
     open_orders: list[dict[str, Any]],
+    executions: list[dict[str, Any]],
     buying_power: list[dict[str, str]],
     errors: list[str],
 ) -> dict[str, Any]:
     buying_power_by_currency = {item["currency"]: item["cashBuyingPower"] for item in buying_power}
+    selected_account_seq = _account_seq(selected_account)
+    trading_status = _trading_status(
+        user_email=user_email,
+        selected_account_seq=selected_account_seq,
+    )
     return {
         "status": status,
         "fetchedAt": now.isoformat(),
@@ -900,7 +1113,7 @@ def _dashboard_response(
             "provider": "Toss Securities",
             "sourceUrl": TOSS_OPEN_API_DOCS_URL,
             "specUrl": TOSS_OPEN_API_SPEC_URL,
-            "description": "토스증권 Open API의 시세, 호가, 캔들, 계좌 조회 API를 읽기 전용으로 사용합니다.",
+            "description": "토스증권 Open API의 시세, 호가, 캔들, 계좌 조회와 허용 계정의 실제 주문 API를 사용합니다.",
         },
         "summary": {
             "market": market,
@@ -915,8 +1128,10 @@ def _dashboard_response(
             else None,
             "holdingCount": len(holdings),
             "openOrderCount": len(open_orders),
+            "executionCount": len(executions),
             "buyingPowerKrw": buying_power_by_currency.get("KRW"),
             "buyingPowerUsd": buying_power_by_currency.get("USD"),
+            **trading_status,
         },
         "accounts": [
             _account_summary(account, selected_account=selected_account) for account in accounts
@@ -926,6 +1141,7 @@ def _dashboard_response(
         "candles": candles,
         "holdings": holdings,
         "openOrders": open_orders,
+        "executions": executions,
         "buyingPower": buying_power,
         "errors": errors,
     }
@@ -945,6 +1161,7 @@ def _empty_dashboard(
         now,
         status=status,
         primary_symbol=primary_symbol,
+        user_email=None,
         accounts=[],
         selected_account=None,
         watchlist=[_stock_quote(symbol, None, None) for symbol in symbols],
@@ -952,6 +1169,7 @@ def _empty_dashboard(
         candles=[],
         holdings=[],
         open_orders=[],
+        executions=[],
         buying_power=[],
         errors=errors,
     )

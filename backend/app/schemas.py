@@ -322,8 +322,13 @@ class TossInvestDashboardSummary(BaseModel):
     selectedAccountMasked: Optional[str] = None
     holdingCount: int
     openOrderCount: int
+    executionCount: int
     buyingPowerKrw: Optional[str] = None
     buyingPowerUsd: Optional[str] = None
+    tradingEnabled: bool
+    tradingAllowed: bool
+    tradingAvailable: bool
+    tradingBlockedReason: Optional[str] = None
 
 
 class TossInvestAccount(BaseModel):
@@ -420,6 +425,23 @@ class TossInvestOpenOrder(BaseModel):
     orderedAt: str
 
 
+class TossInvestExecution(BaseModel):
+    orderId: str
+    symbol: str
+    side: str
+    status: str
+    orderType: str
+    quantity: str
+    price: str
+    filledQuantity: str
+    averageFilledPrice: str
+    filledAmount: str
+    currency: str
+    orderedAt: str
+    filledAt: Optional[str] = None
+    settlementDate: Optional[str] = None
+
+
 class TossInvestBuyingPower(BaseModel):
     currency: str
     cashBuyingPower: str
@@ -438,6 +460,7 @@ class TossInvestStockDashboardResponse(BaseModel):
     candles: list[TossInvestCandle]
     holdings: list[TossInvestHolding]
     openOrders: list[TossInvestOpenOrder]
+    executions: list[TossInvestExecution]
     buyingPower: list[TossInvestBuyingPower]
     errors: list[str]
 
