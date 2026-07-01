@@ -8,8 +8,16 @@ class StockFavoritesStore {
     return _decode(_memory[key]);
   }
 
+  String? readRaw() {
+    return _memory[key];
+  }
+
   void write(List<String> symbols) {
     _memory[key] = symbols.join(',');
+  }
+
+  void writeRaw(String value) {
+    _memory[key] = value;
   }
 
   List<String> _decode(String? raw) {

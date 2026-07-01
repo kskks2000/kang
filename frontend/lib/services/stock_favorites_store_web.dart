@@ -13,9 +13,25 @@ class StockFavoritesStore {
     }
   }
 
+  String? readRaw() {
+    try {
+      return web.window.localStorage.getItem(key);
+    } catch (_) {
+      return null;
+    }
+  }
+
   void write(List<String> symbols) {
     try {
       web.window.localStorage.setItem(key, symbols.join(','));
+    } catch (_) {
+      // Browsers can block storage in private or restricted contexts.
+    }
+  }
+
+  void writeRaw(String value) {
+    try {
+      web.window.localStorage.setItem(key, value);
     } catch (_) {
       // Browsers can block storage in private or restricted contexts.
     }
