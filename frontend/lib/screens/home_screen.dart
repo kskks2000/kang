@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/gestures.dart';
@@ -68,54 +69,50 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFFCFAFF), Color(0xFFF2ECFE), Color(0xFFEAF9F5)],
-          ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isCompact = constraints.maxWidth < 720;
+      body: Stack(
+        children: [
+          const Positioned.fill(child: _DashboardBackground()),
+          SafeArea(
+            top: false,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isCompact = constraints.maxWidth < 720;
 
-              return SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  isCompact ? 18 : 32,
-                  isCompact ? 36 : 54,
-                  isCompact ? 18 : 32,
-                  36,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1040),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _HeroHeader(
-                          displayName: displayName,
-                          email: widget.user.email ?? 'Kang 계정',
-                        ),
-                        const SizedBox(height: 22),
-                        const _ConnectionStatusPanel(),
-                        const SizedBox(height: 18),
-                        _ModuleGrid(
-                          modules: modules,
-                          calendarPreview: _todayCalendarPreview,
-                          onCalendarPreviewRefresh:
-                              _refreshTodayCalendarPreview,
-                        ),
-                      ],
+                return SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    isCompact ? 18 : 34,
+                    isCompact ? 34 : 50,
+                    isCompact ? 18 : 34,
+                    40,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1080),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _HeroHeader(
+                            displayName: displayName,
+                            email: widget.user.email ?? 'Kang 계정',
+                          ),
+                          const SizedBox(height: 22),
+                          const _ConnectionStatusPanel(),
+                          const SizedBox(height: 18),
+                          _ModuleGrid(
+                            modules: modules,
+                            calendarPreview: _todayCalendarPreview,
+                            onCalendarPreviewRefresh:
+                                _refreshTodayCalendarPreview,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -159,18 +156,6 @@ class _HomeScreenState extends State<HomeScreen> {
         screenIcon: Icons.sticky_note_2_outlined,
       ),
       _HomeModule(
-        title: '대학 정보',
-        subtitle: '학과·기본정보',
-        status: '데이터 연동',
-        icon: Icons.school_outlined,
-        accent: Color(0xFF5867D8),
-        surface: Color(0xFFEEF0FF),
-        kind: _HomeModuleKind.university,
-        screenTitle: '대학 정보',
-        screenSubtitle: '대학별 학과와 대학알리미 기본정보',
-        screenIcon: Icons.school_outlined,
-      ),
-      _HomeModule(
         title: '세계 시총',
         subtitle: '주식 TOP 100',
         status: '실시간',
@@ -181,6 +166,18 @@ class _HomeScreenState extends State<HomeScreen> {
         screenTitle: '세계 시총 TOP 100',
         screenSubtitle: '글로벌 상장사 시가총액 순위',
         screenIcon: Icons.trending_up_rounded,
+      ),
+      _HomeModule(
+        title: '주식 거래',
+        subtitle: '거래 대시보드',
+        status: '실전',
+        icon: Icons.show_chart_rounded,
+        accent: Color(0xFF15213F),
+        surface: Color(0xFFEFF4FF),
+        kind: _HomeModuleKind.stockTrading,
+        screenTitle: '주식 거래 대시보드',
+        screenSubtitle: '실시간 시세, 주문, 체결 현황',
+        screenIcon: Icons.show_chart_rounded,
       ),
       _HomeModule(
         title: '금융정보',
@@ -207,16 +204,16 @@ class _HomeScreenState extends State<HomeScreen> {
         screenIcon: Icons.train_rounded,
       ),
       _HomeModule(
-        title: '주식 거래',
-        subtitle: '거래 대시보드',
-        status: '실전',
-        icon: Icons.show_chart_rounded,
-        accent: Color(0xFF15213F),
-        surface: Color(0xFFEFF4FF),
-        kind: _HomeModuleKind.stockTrading,
-        screenTitle: '주식 거래 대시보드',
-        screenSubtitle: '실시간 시세, 주문, 체결 현황',
-        screenIcon: Icons.show_chart_rounded,
+        title: '대학 정보',
+        subtitle: '학과·기본정보',
+        status: '데이터 연동',
+        icon: Icons.school_outlined,
+        accent: Color(0xFF5867D8),
+        surface: Color(0xFFEEF0FF),
+        kind: _HomeModuleKind.university,
+        screenTitle: '대학 정보',
+        screenSubtitle: '대학별 학과와 대학알리미 기본정보',
+        screenIcon: Icons.school_outlined,
       ),
       _HomeModule(
         title: '설정',
@@ -245,6 +242,88 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+class _DashboardBackground extends StatelessWidget {
+  const _DashboardBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: const [
+        ColoredBox(color: Color(0xFFFAFCFF)),
+        Image(
+          image: AssetImage('assets/images/dashboard_mz_bg.png'),
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+          filterQuality: FilterQuality.medium,
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x7CFFFFFF), Color(0x42FFFFFF), Color(0xA6FFFFFF)],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroChip extends StatelessWidget {
+  const _HeroChip({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.60),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.07),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 17, color: color),
+              const SizedBox(width: 7),
+              Text(
+                text,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HeroHeader extends StatelessWidget {
   const _HeroHeader({required this.displayName, required this.email});
 
@@ -258,38 +337,27 @@ class _HeroHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.white),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.auto_awesome_rounded,
-                size: 17,
-                color: KangColors.mintDeep,
-              ),
-              SizedBox(width: 7),
-              Text(
-                'KANG PRIVATE HUB',
-                style: TextStyle(
-                  color: KangColors.royalPurple,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
+        const Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _HeroChip(
+              icon: Icons.auto_awesome_rounded,
+              text: 'KANG PRIVATE HUB',
+              color: KangColors.mintDeep,
+            ),
+            _HeroChip(
+              icon: Icons.bolt_rounded,
+              text: 'LIVE SYNC',
+              color: KangColors.royalPurple,
+            ),
+          ],
         ),
         const SizedBox(height: 20),
         Text(
           '$displayName님, 환영합니다.',
           style: theme.textTheme.headlineSmall?.copyWith(
-            fontSize: 30,
+            fontSize: 32,
             fontWeight: FontWeight.w900,
             height: 1.16,
           ),
@@ -312,58 +380,68 @@ class _ConnectionStatusPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white),
-        boxShadow: [
-          BoxShadow(
-            color: KangColors.deepPurple.withValues(alpha: 0.08),
-            blurRadius: 30,
-            offset: const Offset(0, 18),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.58),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.76)),
+            boxShadow: [
+              BoxShadow(
+                color: KangColors.deepPurple.withValues(alpha: 0.08),
+                blurRadius: 30,
+                offset: const Offset(0, 18),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: const BoxDecoration(
-                color: KangColors.mintSoft,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.verified_user_outlined,
-                color: KangColors.royalPurple,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Google 연동이 활성화되었습니다.',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: KangColors.mintSoft.withValues(alpha: 0.82),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: KangColors.mint.withValues(alpha: 0.22),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '캘린더, 파일, 대학 정보를 Kang에서 바로 확인할 수 있습니다.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.copyWith(fontSize: 13),
+                  child: const Icon(
+                    Icons.verified_user_outlined,
+                    color: KangColors.royalPurple,
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Google 연동이 활성화되었습니다.',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '캘린더, 파일, 메모를 Kang에서 바로 확인할 수 있습니다.',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -386,32 +464,154 @@ class _ModuleGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final columns = width >= 900
+        final columns = width >= 760
             ? 3
-            : width >= 580
-            ? 3
-            : 2;
-        final spacing = width < 420 ? 10.0 : 12.0;
-        final itemWidth = (width - spacing * (columns - 1)) / columns;
+            : width >= 480
+            ? 2
+            : 1;
+        final spacing = width < 420 ? 10.0 : 14.0;
+        final tileExtent = width < 480 ? 154.0 : 166.0;
 
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (final module in modules)
-              SizedBox(
-                width: itemWidth,
-                child: module.kind == _HomeModuleKind.calendar
-                    ? _CalendarModuleTile(
-                        module: module,
-                        preview: calendarPreview,
-                        onRefresh: onCalendarPreviewRefresh,
-                      )
-                    : _ModuleTile(module: module),
-              ),
-          ],
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: modules.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            mainAxisExtent: tileExtent,
+          ),
+          itemBuilder: (context, index) {
+            final module = modules[index];
+            if (module.kind == _HomeModuleKind.calendar) {
+              return _CalendarModuleTile(
+                module: module,
+                preview: calendarPreview,
+                onRefresh: onCalendarPreviewRefresh,
+              );
+            }
+            return _ModuleTile(module: module);
+          },
         );
       },
+    );
+  }
+}
+
+class _ModuleCardSurface extends StatelessWidget {
+  const _ModuleCardSurface({
+    required this.module,
+    required this.onTap,
+    required this.child,
+  });
+
+  final _HomeModule module;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(8);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: module.accent.withValues(alpha: 0.10),
+            blurRadius: 34,
+            offset: const Offset(0, 18),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.72),
+            blurRadius: 18,
+            offset: const Offset(-8, -8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Material(
+            color: Colors.white.withValues(alpha: 0.46),
+            child: InkWell(
+              onTap: onTap,
+              child: Ink(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.72),
+                  ),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.84),
+                      module.surface.withValues(alpha: 0.46),
+                      Colors.white.withValues(alpha: 0.56),
+                    ],
+                  ),
+                ),
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModuleIconBadge extends StatelessWidget {
+  const _ModuleIconBadge({required this.module});
+
+  final _HomeModule module;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: module.surface.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: module.accent.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: module.accent.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Icon(module.icon, color: module.accent, size: 20),
+    );
+  }
+}
+
+class _ModuleArrowButton extends StatelessWidget {
+  const _ModuleArrowButton({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.76)),
+      ),
+      child: Icon(
+        Icons.arrow_forward_rounded,
+        color: color.withValues(alpha: 0.66),
+        size: 17,
+      ),
     );
   }
 }
@@ -423,66 +623,44 @@ class _ModuleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.78),
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => _openModule(context),
-        child: Ink(
-          height: 124,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: KangColors.line),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return _ModuleCardSurface(
+      module: module,
+      onTap: () {
+        _openModule(context);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: module.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(module.icon, color: module.accent, size: 19),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    color: KangColors.slate.withValues(alpha: 0.64),
-                    size: 18,
-                  ),
-                ],
-              ),
+              _ModuleIconBadge(module: module),
               const Spacer(),
-              Text(
-                module.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                module.subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 12,
-                  color: KangColors.slate,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _StatusPill(text: module.status, color: module.accent),
+              _ModuleArrowButton(color: module.accent),
             ],
           ),
-        ),
+          const Spacer(),
+          Text(
+            module.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            module.subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontSize: 12,
+              color: KangColors.slate,
+            ),
+          ),
+          const SizedBox(height: 9),
+          _StatusPill(text: module.status, color: module.accent),
+        ],
       ),
     );
   }
@@ -517,116 +695,87 @@ class _CalendarModuleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.84),
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => _openCalendar(context),
-        child: Ink(
-          height: 184,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: module.accent.withValues(alpha: 0.18)),
-            boxShadow: [
-              BoxShadow(
-                color: KangColors.deepPurple.withValues(alpha: 0.06),
-                blurRadius: 22,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return _ModuleCardSurface(
+      module: module,
+      onTap: () {
+        _openCalendar(context);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: module.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(module.icon, color: module.accent, size: 19),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    color: KangColors.slate.withValues(alpha: 0.64),
-                    size: 18,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 13),
-              Text(
-                module.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                '오늘 Google Calendar 일정',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 12,
-                  color: KangColors.slate,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: FutureBuilder<GoogleCalendarPreview>(
-                  future: preview,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return _CalendarHomeStatus(
-                        color: module.accent,
-                        pill: '확인 중',
-                        message: '오늘 일정을 불러오고 있습니다.',
-                      );
-                    }
-
-                    if (snapshot.hasError || !snapshot.hasData) {
-                      return _CalendarHomeStatus(
-                        color: module.accent,
-                        pill: '연결 필요',
-                        message: '캘린더 권한을 연결하면 일정이 표시됩니다.',
-                      );
-                    }
-
-                    final events = snapshot.data!.events;
-                    if (events.isEmpty) {
-                      return _CalendarHomeStatus(
-                        color: module.accent,
-                        pill: '오늘 0개',
-                        message: '오늘 등록된 일정이 없습니다.',
-                      );
-                    }
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _StatusPill(
-                          text: '오늘 ${events.length}개',
-                          color: module.accent,
-                        ),
-                        const SizedBox(height: 7),
-                        for (final event in events.take(2))
-                          _CalendarHomeEventLine(event: event),
-                      ],
-                    );
-                  },
-                ),
-              ),
+              _ModuleIconBadge(module: module),
+              const Spacer(),
+              _ModuleArrowButton(color: module.accent),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Text(
+            module.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '오늘 Google Calendar 일정',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontSize: 12,
+              color: KangColors.slate,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Expanded(
+            child: FutureBuilder<GoogleCalendarPreview>(
+              future: preview,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return _CalendarHomeStatus(
+                    color: module.accent,
+                    pill: '확인 중',
+                    message: '오늘 일정을 불러오고 있습니다.',
+                  );
+                }
+
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return _CalendarHomeStatus(
+                    color: module.accent,
+                    pill: '연결 필요',
+                    message: '캘린더 권한을 연결하면 일정이 표시됩니다.',
+                  );
+                }
+
+                final events = snapshot.data!.events;
+                if (events.isEmpty) {
+                  return _CalendarHomeStatus(
+                    color: module.accent,
+                    pill: '오늘 0개',
+                    message: '오늘 등록된 일정이 없습니다.',
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _StatusPill(
+                      text: '오늘 ${events.length}개',
+                      color: module.accent,
+                    ),
+                    const SizedBox(height: 7),
+                    for (final event in events.take(1))
+                      _CalendarHomeEventLine(event: event),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -656,10 +805,10 @@ class _CalendarHomeStatus extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _StatusPill(text: pill, color: color),
-        const SizedBox(height: 8),
+        const SizedBox(height: 5),
         Text(
           message,
-          maxLines: 2,
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: KangColors.slate,
@@ -735,8 +884,9 @@ class _StatusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.09),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.1)),
       ),
       child: Text(
         text,
