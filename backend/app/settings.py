@@ -91,6 +91,11 @@ class Settings:
     tossinvest_account: str
     tossinvest_trading_enabled: bool
     tossinvest_trading_allowed_emails: list[str]
+    upbit_api_base_url: str
+    upbit_access_key: str
+    upbit_secret_key: str
+    upbit_trading_enabled: bool
+    upbit_trading_allowed_emails: list[str]
 
 
 def load_settings() -> Settings:
@@ -180,6 +185,14 @@ def load_settings() -> Settings:
         ),
         tossinvest_trading_allowed_emails=[
             item.lower() for item in _csv(os.getenv("TOSSINVEST_TRADING_ALLOWED_EMAILS", ""))
+        ],
+        upbit_api_base_url=os.getenv("UPBIT_API_BASE_URL", "https://api.upbit.com").strip()
+        or "https://api.upbit.com",
+        upbit_access_key=os.getenv("UPBIT_ACCESS_KEY", "").strip(),
+        upbit_secret_key=os.getenv("UPBIT_SECRET_KEY", "").strip(),
+        upbit_trading_enabled=_bool(os.getenv("UPBIT_TRADING_ENABLED", "")),
+        upbit_trading_allowed_emails=[
+            item.lower() for item in _csv(os.getenv("UPBIT_TRADING_ALLOWED_EMAILS", ""))
         ],
     )
 

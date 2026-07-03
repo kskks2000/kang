@@ -30,6 +30,16 @@ from .tossinvest_service import (
     load_toss_stock_dashboard,
     modify_toss_order,
 )
+from .upbit_service import (
+    UpbitApiError,
+    cancel_upbit_order,
+    create_upbit_order,
+    get_upbit_order,
+    load_upbit_crypto_candles,
+    load_upbit_crypto_dashboard,
+    search_upbit_markets,
+    test_upbit_order,
+)
 from .schemas import (
     AcademyInfoBasicResponse,
     CalendarEventsRequest,
@@ -57,6 +67,12 @@ from .schemas import (
     TossInvestOrderResponse,
     TossInvestStockDashboardResponse,
     TossInvestStockSearchResponse,
+    UpbitCryptoCandlesResponse,
+    UpbitCryptoDashboardResponse,
+    UpbitCryptoMarketSearchResponse,
+    UpbitOrderActionResponse,
+    UpbitOrderRequest,
+    UpbitOrderResponse,
 )
 from .settings import settings
 
@@ -85,6 +101,14 @@ def _require_firebase_bearer_token(request: Request) -> dict:
     if scheme.lower() != "bearer" or not token.strip():
         raise HTTPException(status_code=401, detail="Firebase 인증 토큰이 필요합니다.")
     return verify_firebase_id_token(token.strip())
+
+
+def _payload_dict(payload: object) -> dict:
+    model_dump = getattr(payload, "model_dump", None)
+    if callable(model_dump):
+        return model_dump()
+    legacy_dict = getattr(payload, "dict")
+    return legacy_dict()
 
 
 @app.get("/health")
@@ -225,6 +249,118 @@ def toss_cancel_order(order_id: str, request: Request) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except TossInvestApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/upbit/crypto-dashboard", response_model=UpbitCryptoDashboardResponse)
+def upbit_crypto_dashboard(
+    request: Request,
+    market: str = "KRW",
+    symbol: Optional[str] = None,
+    symbols: Optional[str] = None,
+    candle_interval: str = Query("1m", alias="candleInterval"),
+) -> dict:
+    claims = _require_firebase_bearer_token(request)
+    return load_upbit_crypto_dashboard(
+        market=market,
+        symbol=symbol,
+        symbols=symbols,
+        candle_interval=candle_interval,
+        user_email=str(claims.get("email") or ""),
+    )
+
+
+@app.get("/upbit/candles", response_model=UpbitCryptoCandlesResponse)
+def upbit_crypto_candles(
+    request: Request,
+    market: str = "KRW",
+    symbol: Optional[str] = None,
+    candle_interval: str = Query("1m", alias="candleInterval"),
+    count: int = 200,
+    before: Optional[str] = None,
+) -> dict:
+    _require_firebase_bearer_token(request)
+    try:
+        return load_upbit_crypto_candles(
+            market=market,
+            symbol=symbol,
+            candle_interval=candle_interval,
+            count=count,
+            before=before,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except UpbitApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/upbit/markets/search", response_model=UpbitCryptoMarketSearchResponse)
+def upbit_crypto_market_search(
+    request: Request,
+    market: str = "KRW",
+    query: str = "",
+    limit: int = 30,
+) -> dict:
+    _require_firebase_bearer_token(request)
+    try:
+        return search_upbit_markets(market=market, query=query, limit=limit)
+    except UpbitApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/upbit/orders", response_model=UpbitOrderResponse)
+def upbit_create_order(payload: UpbitOrderRequest, request: Request) -> dict:
+    claims = _require_firebase_bearer_token(request)
+    user_email = str(claims.get("email") or "")
+    try:
+        return create_upbit_order(_payload_dict(payload), user_email=user_email)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except UpbitApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/upbit/orders/test", response_model=UpbitOrderResponse)
+def upbit_test_order(payload: UpbitOrderRequest, request: Request) -> dict:
+    claims = _require_firebase_bearer_token(request)
+    user_email = str(claims.get("email") or "")
+    try:
+        return test_upbit_order(_payload_dict(payload), user_email=user_email)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except UpbitApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/upbit/orders/{order_id}", response_model=TossInvestOpenOrder)
+def upbit_get_order(order_id: str, request: Request) -> dict:
+    claims = _require_firebase_bearer_token(request)
+    user_email = str(claims.get("email") or "")
+    try:
+        return get_upbit_order(order_id, user_email=user_email)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except UpbitApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/upbit/orders/{order_id}/cancel", response_model=UpbitOrderActionResponse)
+def upbit_cancel_order(order_id: str, request: Request) -> dict:
+    claims = _require_firebase_bearer_token(request)
+    user_email = str(claims.get("email") or "")
+    try:
+        return cancel_upbit_order(order_id, user_email=user_email)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except UpbitApiError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 

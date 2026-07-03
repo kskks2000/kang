@@ -504,6 +504,30 @@ class TossInvestOrderActionResponse(BaseModel):
     message: str
 
 
+class UpbitCryptoDashboardResponse(TossInvestStockDashboardResponse):
+    pass
+
+
+class UpbitCryptoCandlesResponse(TossInvestCandlesResponse):
+    pass
+
+
+class UpbitCryptoMarketSearchResponse(TossInvestStockSearchResponse):
+    pass
+
+
+class UpbitOrderRequest(TossInvestOrderRequest):
+    pass
+
+
+class UpbitOrderResponse(TossInvestOrderResponse):
+    pass
+
+
+class UpbitOrderActionResponse(TossInvestOrderActionResponse):
+    pass
+
+
 class SubwaySource(BaseModel):
     title: str
     provider: str

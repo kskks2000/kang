@@ -1406,11 +1406,15 @@ class _StockTradingWatchlistGroup {
 
 class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
   final TossStockApi _tossStockApi = TossStockApi();
+  final UpbitCryptoApi _upbitCryptoApi = UpbitCryptoApi();
   final StockFavoritesStore _domesticLegacyWatchlistStore = StockFavoritesStore(
     'kang.stock.watchlist.kr',
   );
   final StockFavoritesStore _overseasLegacyWatchlistStore = StockFavoritesStore(
     'kang.stock.watchlist.us',
+  );
+  final StockFavoritesStore _cryptoLegacyWatchlistStore = StockFavoritesStore(
+    'kang.stock.watchlist.crypto',
   );
   final StockFavoritesStore _domesticWatchlistGroupStore = StockFavoritesStore(
     'kang.stock.watchlist.groups.kr',
@@ -1418,15 +1422,22 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
   final StockFavoritesStore _overseasWatchlistGroupStore = StockFavoritesStore(
     'kang.stock.watchlist.groups.us',
   );
+  final StockFavoritesStore _cryptoWatchlistGroupStore = StockFavoritesStore(
+    'kang.stock.watchlist.groups.crypto',
+  );
 
   var _selectedMarket = _StockTradingMarket.domestic;
   var _selectedInterval = _StockTradingChartInterval.day;
   var _activeWorkspace = _StockTradingWorkspace.watchlist;
   String? _selectedDomesticSymbol;
   String? _selectedOverseasSymbol;
+  String? _selectedCryptoSymbol;
   var _watchlistWorkspaceSplitRatio = 5 / 9;
   var _rightColumnSplitRatio = 5 / 8;
   double? _rightColumnWidth;
+  String? _selectedOrderbookPrice;
+  String? _selectedOrderbookSide;
+  var _selectedOrderbookPriceSerial = 0;
   TossStockDashboard? _dashboard;
   String? _dashboardError;
   final Map<String, TossStockQuote> _quoteCache = {};
@@ -1446,30 +1457,49 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
           symbols: <String>[],
         ),
       ];
+  List<_StockTradingWatchlistGroup> _cryptoWatchlistGroups =
+      const <_StockTradingWatchlistGroup>[
+        _StockTradingWatchlistGroup(
+          id: _stockTradingDefaultWatchlistGroupId,
+          name: _stockTradingDefaultWatchlistGroupName,
+          symbols: <String>[],
+        ),
+      ];
   var _selectedDomesticWatchlistGroupId = _stockTradingDefaultWatchlistGroupId;
   var _selectedOverseasWatchlistGroupId = _stockTradingDefaultWatchlistGroupId;
+  var _selectedCryptoWatchlistGroupId = _stockTradingDefaultWatchlistGroupId;
   var _loadingDashboard = false;
   var _loadSerial = 0;
 
   _StockTradingMarketConfig get _config =>
       _StockTradingMarketConfig.byMarket(_selectedMarket);
 
-  String get _marketCode =>
-      _selectedMarket == _StockTradingMarket.domestic ? 'KR' : 'US';
+  TradingDashboardApi get _currentApi =>
+      _selectedMarket == _StockTradingMarket.crypto
+      ? _upbitCryptoApi
+      : _tossStockApi;
 
-  String get _activeSymbol => _selectedMarket == _StockTradingMarket.domestic
-      ? _selectedDomesticSymbol ?? '005930'
-      : _selectedOverseasSymbol ?? 'NVDA';
+  String get _marketCode => _config.marketCode;
+
+  String get _activeSymbol => switch (_selectedMarket) {
+    _StockTradingMarket.domestic => _selectedDomesticSymbol ?? '005930',
+    _StockTradingMarket.overseas => _selectedOverseasSymbol ?? 'NVDA',
+    _StockTradingMarket.crypto => _selectedCryptoSymbol ?? 'KRW-BTC',
+  };
 
   List<_StockTradingWatchlistGroup> get _currentWatchlistGroups =>
-      _selectedMarket == _StockTradingMarket.domestic
-      ? _domesticWatchlistGroups
-      : _overseasWatchlistGroups;
+      switch (_selectedMarket) {
+        _StockTradingMarket.domestic => _domesticWatchlistGroups,
+        _StockTradingMarket.overseas => _overseasWatchlistGroups,
+        _StockTradingMarket.crypto => _cryptoWatchlistGroups,
+      };
 
   String get _currentSelectedWatchlistGroupId {
-    final groupId = _selectedMarket == _StockTradingMarket.domestic
-        ? _selectedDomesticWatchlistGroupId
-        : _selectedOverseasWatchlistGroupId;
+    final groupId = switch (_selectedMarket) {
+      _StockTradingMarket.domestic => _selectedDomesticWatchlistGroupId,
+      _StockTradingMarket.overseas => _selectedOverseasWatchlistGroupId,
+      _StockTradingMarket.crypto => _selectedCryptoWatchlistGroupId,
+    };
     if (groupId == _stockTradingAllWatchlistGroupId ||
         _currentWatchlistGroups.any((group) => group.id == groupId)) {
       return groupId;
@@ -1559,6 +1589,7 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
   @override
   void dispose() {
     _tossStockApi.close();
+    _upbitCryptoApi.close();
     super.dispose();
   }
 
@@ -1569,7 +1600,7 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
       _dashboardError = null;
     });
     try {
-      final dashboard = await _tossStockApi.loadDashboard(
+      final dashboard = await _currentApi.loadDashboard(
         market: _marketCode,
         symbol: _activeSymbol,
         symbols: [_activeSymbol, ..._currentCustomWatchlistSymbols],
@@ -1605,11 +1636,19 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
       legacyStore: _overseasLegacyWatchlistStore,
       marketCode: 'US',
     );
+    _cryptoWatchlistGroups = _readStoredWatchlistGroups(
+      groupStore: _cryptoWatchlistGroupStore,
+      legacyStore: _cryptoLegacyWatchlistStore,
+      marketCode: 'UPBIT',
+    );
     _domesticWatchlistGroupStore.writeRaw(
       _encodeStockTradingWatchlistGroups(_domesticWatchlistGroups),
     );
     _overseasWatchlistGroupStore.writeRaw(
       _encodeStockTradingWatchlistGroups(_overseasWatchlistGroups),
+    );
+    _cryptoWatchlistGroupStore.writeRaw(
+      _encodeStockTradingWatchlistGroups(_cryptoWatchlistGroups),
     );
   }
 
@@ -1664,11 +1703,17 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
         _domesticWatchlistGroupStore.writeRaw(
           _encodeStockTradingWatchlistGroups(_domesticWatchlistGroups),
         );
-      } else {
+      } else if (_selectedMarket == _StockTradingMarket.overseas) {
         _selectedOverseasSymbol = symbol;
         _overseasWatchlistGroups = normalizedGroups;
         _overseasWatchlistGroupStore.writeRaw(
           _encodeStockTradingWatchlistGroups(_overseasWatchlistGroups),
+        );
+      } else {
+        _selectedCryptoSymbol = symbol;
+        _cryptoWatchlistGroups = normalizedGroups;
+        _cryptoWatchlistGroupStore.writeRaw(
+          _encodeStockTradingWatchlistGroups(_cryptoWatchlistGroups),
         );
       }
       _dashboardError = null;
@@ -1709,11 +1754,17 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
         _domesticWatchlistGroupStore.writeRaw(
           _encodeStockTradingWatchlistGroups(_domesticWatchlistGroups),
         );
-      } else {
+      } else if (_selectedMarket == _StockTradingMarket.overseas) {
         _overseasWatchlistGroups = nextGroups;
         _selectedOverseasWatchlistGroupId = groupId;
         _overseasWatchlistGroupStore.writeRaw(
           _encodeStockTradingWatchlistGroups(_overseasWatchlistGroups),
+        );
+      } else {
+        _cryptoWatchlistGroups = nextGroups;
+        _selectedCryptoWatchlistGroupId = groupId;
+        _cryptoWatchlistGroupStore.writeRaw(
+          _encodeStockTradingWatchlistGroups(_cryptoWatchlistGroups),
         );
       }
     });
@@ -1728,8 +1779,10 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
     setState(() {
       if (_selectedMarket == _StockTradingMarket.domestic) {
         _selectedDomesticWatchlistGroupId = groupId;
-      } else {
+      } else if (_selectedMarket == _StockTradingMarket.overseas) {
         _selectedOverseasWatchlistGroupId = groupId;
+      } else {
+        _selectedCryptoWatchlistGroupId = groupId;
       }
     });
   }
@@ -1761,12 +1814,28 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
     setState(() {
       if (_selectedMarket == _StockTradingMarket.domestic) {
         _selectedDomesticSymbol = symbol;
-      } else {
+      } else if (_selectedMarket == _StockTradingMarket.overseas) {
         _selectedOverseasSymbol = symbol;
+      } else {
+        _selectedCryptoSymbol = symbol;
       }
       _dashboardError = null;
     });
     _loadDashboard();
+  }
+
+  void _selectOrderbookPrice(String price, String side) {
+    final cleaned = _stockCleanOrderInput(price);
+    final normalizedSide = side.trim().toUpperCase();
+    if (cleaned.isEmpty ||
+        (normalizedSide != 'BUY' && normalizedSide != 'SELL')) {
+      return;
+    }
+    setState(() {
+      _selectedOrderbookPrice = cleaned;
+      _selectedOrderbookSide = normalizedSide;
+      _selectedOrderbookPriceSerial++;
+    });
   }
 
   void _cacheDashboardQuotes(TossStockDashboard dashboard) {
@@ -1822,7 +1891,7 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
                   final currentMarketQuotes = _currentMarketQuotes;
                   final activeQuote = _activeQuote;
                   final watchlistPanel = _StockTradingWatchlistPanel(
-                    api: _tossStockApi,
+                    api: _currentApi,
                     config: config,
                     quotes: currentMarketQuotes,
                     groups: _currentWatchlistGroups,
@@ -1836,7 +1905,7 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
                     onSymbolAdded: _addWatchlistSymbol,
                   );
                   final marketBoard = _StockTradingMarketBoard(
-                    api: _tossStockApi,
+                    api: _currentApi,
                     config: config,
                     marketCode: _marketCode,
                     symbol: _activeSymbol,
@@ -1846,9 +1915,10 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
                     error: _dashboardError,
                     selectedInterval: _selectedInterval,
                     onIntervalChanged: _changeInterval,
+                    onOrderbookPriceSelected: _selectOrderbookPrice,
                   );
                   final chartWorkspace = _StockTradingChartWorkspace(
-                    api: _tossStockApi,
+                    api: _currentApi,
                     config: config,
                     marketCode: _marketCode,
                     symbol: _activeSymbol,
@@ -1874,13 +1944,16 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
                     onSymbolSelected: _selectSymbol,
                   );
                   final orderPanel = _StockTradingOrderPanel(
-                    api: _tossStockApi,
+                    api: _currentApi,
                     config: config,
                     marketCode: _marketCode,
                     symbol: _activeSymbol,
                     dashboard: currentMarketDashboard,
                     quote: activeQuote,
                     loading: _loadingDashboard,
+                    selectedOrderbookPrice: _selectedOrderbookPrice,
+                    selectedOrderbookSide: _selectedOrderbookSide,
+                    selectedOrderbookPriceSerial: _selectedOrderbookPriceSerial,
                     onOrderSubmitted: _loadDashboard,
                   );
                   final orderWorkspace = _StockTradingOrderWorkspace(
@@ -1889,6 +1962,7 @@ class _StockTradingFullScreenState extends State<_StockTradingFullScreen> {
                     quote: activeQuote,
                     loading: _loadingDashboard,
                     error: _dashboardError,
+                    onOrderbookPriceSelected: _selectOrderbookPrice,
                   );
                   final executionPanel = _StockTradingExecutionPanel(
                     config: config,
@@ -2257,7 +2331,7 @@ class _StockTradingTopBar extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  '주식 거래 대시보드',
+                  '거래 대시보드',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -2280,7 +2354,7 @@ class _StockTradingTopBar extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
+            constraints: const BoxConstraints(maxWidth: 640),
             child: _StockTradingMarketTabs(
               selected: selectedMarket,
               onChanged: onMarketChanged,
@@ -2552,7 +2626,7 @@ class _StockTradingWatchlistPanel extends StatefulWidget {
     required this.onSymbolAdded,
   });
 
-  final TossStockApi api;
+  final TradingDashboardApi api;
   final _StockTradingMarketConfig config;
   final List<TossStockQuote> quotes;
   final List<_StockTradingWatchlistGroup> groups;
@@ -2584,8 +2658,8 @@ class _StockTradingWatchlistPanelState
   final Set<String> _loadingDailyChangeSymbols = {};
   var _dailyChangeSerial = 0;
 
-  bool get _usesRemoteSearch => widget.config.badge == 'KRW';
-  String get _marketCode => widget.config.badge == 'KRW' ? 'KR' : 'US';
+  bool get _usesRemoteSearch => widget.config.usesRemoteSearch;
+  String get _marketCode => widget.config.marketCode;
 
   @override
   void initState() {
@@ -2632,7 +2706,7 @@ class _StockTradingWatchlistPanelState
   }
 
   void _refreshMissingDailyChanges() {
-    final marketCode = widget.config.badge == 'KRW' ? 'KR' : 'US';
+    final marketCode = widget.config.marketCode;
     final serial = _dailyChangeSerial;
     for (final quote in widget.quotes) {
       final symbol = quote.symbol.trim().toUpperCase();
@@ -2746,7 +2820,7 @@ class _StockTradingWatchlistPanelState
 
     try {
       final result = await widget.api.searchStocks(
-        market: 'KR',
+        market: _marketCode,
         query: query,
         limit: 30,
       );
@@ -2881,101 +2955,140 @@ class _StockTradingWatchlistPanelState
     final config = widget.config;
     final selectedSymbol = widget.selectedSymbol;
     final onSymbolSelected = widget.onSymbolSelected;
-    final baseItems = config.badge == 'KRW'
-        ? const [
-            _StockTradingWatchlistItem(
-              symbol: '005930',
-              name: '삼성전자',
-              logoAsset: 'assets/stock_logos/005930.png',
-              price: '339,500 KRW',
-              change: '+9.34%',
-              changeValue: 9.34,
-              marketCap: '1984.8조원',
-              market: 'KOSPI',
-            ),
-            _StockTradingWatchlistItem(
-              symbol: '000660',
-              name: 'SK하이닉스',
-              logoAsset: 'assets/stock_logos/000660.png',
-              price: '2,653,000 KRW',
-              change: '+3.27%',
-              changeValue: 3.27,
-              marketCap: '1890.8조원',
-              market: 'KOSPI',
-            ),
-            _StockTradingWatchlistItem(
-              symbol: '035420',
-              name: 'NAVER',
-              logoAsset: 'assets/stock_logos/035420.png',
-              price: '201,000 KRW',
-              change: '+0.60%',
-              changeValue: 0.60,
-              marketCap: '31.5조원',
-              market: 'KOSPI',
-            ),
-            _StockTradingWatchlistItem(
-              symbol: '035720',
-              name: '카카오',
-              logoAsset: 'assets/stock_logos/035720.png',
-              price: '34,150 KRW',
-              change: '+0.15%',
-              changeValue: 0.15,
-              marketCap: '15.1조원',
-              market: 'KOSPI',
-            ),
-            _StockTradingWatchlistItem(
-              symbol: '068270',
-              name: '셀트리온',
-              logoAsset: 'assets/stock_logos/068270.png',
-              price: '172,900 KRW',
-              change: '+9.03%',
-              changeValue: 9.03,
-              marketCap: '38.0조원',
-              market: 'KOSPI',
-            ),
-          ]
-        : const [
-            _StockTradingWatchlistItem(
-              symbol: 'NVDA',
-              name: 'NVIDIA',
-              logoAsset: 'assets/stock_logos/NVDA.png',
-              price: '202.30 USD',
-              change: '+1.10%',
-              changeValue: 1.10,
-              marketCap: '4.9T',
-              market: 'NASDAQ',
-            ),
-            _StockTradingWatchlistItem(
-              symbol: 'AAPL',
-              name: 'Apple',
-              logoAsset: 'assets/stock_logos/AAPL.png',
-              price: '297.02 USD',
-              change: '+0.92%',
-              changeValue: 0.92,
-              marketCap: '4.4T',
-              market: 'NASDAQ',
-            ),
-            _StockTradingWatchlistItem(
-              symbol: 'MSFT',
-              name: 'Microsoft',
-              logoAsset: 'assets/stock_logos/MSFT.png',
-              price: '492.14 USD',
-              change: '-0.18%',
-              changeValue: -0.18,
-              marketCap: '3.6T',
-              market: 'NASDAQ',
-            ),
-            _StockTradingWatchlistItem(
-              symbol: 'TSLA',
-              name: 'Tesla',
-              logoAsset: 'assets/stock_logos/TSLA.png',
-              price: '429.90 USD',
-              change: '+0.74%',
-              changeValue: 0.74,
-              marketCap: '1.4T',
-              market: 'NASDAQ',
-            ),
-          ];
+    final baseItems = switch (config.marketCode) {
+      'KR' => const [
+        _StockTradingWatchlistItem(
+          symbol: '005930',
+          name: '삼성전자',
+          logoAsset: 'assets/stock_logos/005930.png',
+          price: '339,500 KRW',
+          change: '+9.34%',
+          changeValue: 9.34,
+          marketCap: '1984.8조원',
+          market: 'KOSPI',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: '000660',
+          name: 'SK하이닉스',
+          logoAsset: 'assets/stock_logos/000660.png',
+          price: '2,653,000 KRW',
+          change: '+3.27%',
+          changeValue: 3.27,
+          marketCap: '1890.8조원',
+          market: 'KOSPI',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: '035420',
+          name: 'NAVER',
+          logoAsset: 'assets/stock_logos/035420.png',
+          price: '201,000 KRW',
+          change: '+0.60%',
+          changeValue: 0.60,
+          marketCap: '31.5조원',
+          market: 'KOSPI',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: '035720',
+          name: '카카오',
+          logoAsset: 'assets/stock_logos/035720.png',
+          price: '34,150 KRW',
+          change: '+0.15%',
+          changeValue: 0.15,
+          marketCap: '15.1조원',
+          market: 'KOSPI',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: '068270',
+          name: '셀트리온',
+          logoAsset: 'assets/stock_logos/068270.png',
+          price: '172,900 KRW',
+          change: '+9.03%',
+          changeValue: 9.03,
+          marketCap: '38.0조원',
+          market: 'KOSPI',
+        ),
+      ],
+      'UPBIT' => const [
+        _StockTradingWatchlistItem(
+          symbol: 'KRW-BTC',
+          name: '비트코인',
+          price: '조회 중',
+          change: '-',
+          changeValue: 0,
+          marketCap: '-',
+          market: 'UPBIT',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: 'KRW-ETH',
+          name: '이더리움',
+          price: '조회 중',
+          change: '-',
+          changeValue: 0,
+          marketCap: '-',
+          market: 'UPBIT',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: 'KRW-XRP',
+          name: '리플',
+          price: '조회 중',
+          change: '-',
+          changeValue: 0,
+          marketCap: '-',
+          market: 'UPBIT',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: 'KRW-SOL',
+          name: '솔라나',
+          price: '조회 중',
+          change: '-',
+          changeValue: 0,
+          marketCap: '-',
+          market: 'UPBIT',
+        ),
+      ],
+      _ => const [
+        _StockTradingWatchlistItem(
+          symbol: 'NVDA',
+          name: 'NVIDIA',
+          logoAsset: 'assets/stock_logos/NVDA.png',
+          price: '202.30 USD',
+          change: '+1.10%',
+          changeValue: 1.10,
+          marketCap: '4.9T',
+          market: 'NASDAQ',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: 'AAPL',
+          name: 'Apple',
+          logoAsset: 'assets/stock_logos/AAPL.png',
+          price: '297.02 USD',
+          change: '+0.92%',
+          changeValue: 0.92,
+          marketCap: '4.4T',
+          market: 'NASDAQ',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: 'MSFT',
+          name: 'Microsoft',
+          logoAsset: 'assets/stock_logos/MSFT.png',
+          price: '492.14 USD',
+          change: '-0.18%',
+          changeValue: -0.18,
+          marketCap: '3.6T',
+          market: 'NASDAQ',
+        ),
+        _StockTradingWatchlistItem(
+          symbol: 'TSLA',
+          name: 'Tesla',
+          logoAsset: 'assets/stock_logos/TSLA.png',
+          price: '429.90 USD',
+          change: '+0.74%',
+          changeValue: 0.74,
+          marketCap: '1.4T',
+          market: 'NASDAQ',
+        ),
+      ],
+    };
     final selectedGroupId = widget.selectedGroupId;
     final showsDefaultUniverse =
         selectedGroupId == _stockTradingAllWatchlistGroupId ||
@@ -3176,7 +3289,7 @@ class _StockTradingAddSymbolDialog extends StatefulWidget {
     required this.addTargetGroupName,
   });
 
-  final TossStockApi api;
+  final TradingDashboardApi api;
   final _StockTradingMarketConfig config;
   final List<_StockTradingWatchlistItem> currentItems;
   final String initialQuery;
@@ -3199,8 +3312,8 @@ class _StockTradingAddSymbolDialogState
   List<_StockTradingWatchlistItem> _remoteItems =
       const <_StockTradingWatchlistItem>[];
 
-  bool get _usesRemoteSearch => widget.config.badge == 'KRW';
-  String get _marketCode => widget.config.badge == 'KRW' ? 'KR' : 'US';
+  bool get _usesRemoteSearch => widget.config.usesRemoteSearch;
+  String get _marketCode => widget.config.marketCode;
 
   List<_StockTradingWatchlistItem> get _localItems {
     final query = _query.trim();
@@ -3272,7 +3385,7 @@ class _StockTradingAddSymbolDialogState
 
     try {
       final result = await widget.api.searchStocks(
-        market: 'KR',
+        market: _marketCode,
         query: query,
         limit: 30,
       );
@@ -3347,9 +3460,11 @@ class _StockTradingAddSymbolDialogState
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 labelText: '종목 코드 / 이름',
-                hintText: widget.config.badge == 'KRW'
-                    ? '예: 삼성전자, 005930'
-                    : '예: NVIDIA, NVDA',
+                hintText: switch (widget.config.marketCode) {
+                  'KR' => '예: 삼성전자, 005930',
+                  'UPBIT' => '예: 비트코인, BTC, KRW-BTC',
+                  _ => '예: NVIDIA, NVDA',
+                },
                 suffixIcon: _loading
                     ? const Padding(
                         padding: EdgeInsets.all(13),
@@ -3716,7 +3831,11 @@ _StockTradingWatchlistItem _stockTradingWatchlistFallbackItem(
     change: '-',
     changeValue: 0,
     marketCap: '-',
-    market: marketCode == 'KR' ? 'KRX' : 'US',
+    market: switch (marketCode) {
+      'KR' => 'KRX',
+      'UPBIT' => 'UPBIT',
+      _ => 'US',
+    },
     logoUrl: _stockTradingLogoUrlForSymbol(normalizedSymbol),
   );
 }
@@ -4084,6 +4203,15 @@ String _normalizeStockTradingSymbol(
   if (marketCode == 'KR') {
     return RegExp(r'^\d{6}$').hasMatch(symbol) ? symbol : '';
   }
+  if (marketCode == 'UPBIT') {
+    if (RegExp(r'^(KRW|BTC|USDT)-[A-Z0-9]{2,20}$').hasMatch(symbol)) {
+      return symbol;
+    }
+    if (RegExp(r'^[A-Z0-9]{2,20}$').hasMatch(symbol)) {
+      return 'KRW-$symbol';
+    }
+    return '';
+  }
   return RegExp(r'^[A-Z0-9.\-]{1,20}$').hasMatch(symbol) ? symbol : '';
 }
 
@@ -4100,6 +4228,9 @@ bool _stockTradingWatchlistContainsSymbol(
 String _stockTradingLogoUrlForSymbol(String symbol) {
   final normalizedSymbol = symbol.trim().toUpperCase();
   if (normalizedSymbol.isEmpty) {
+    return '';
+  }
+  if (normalizedSymbol.contains('-')) {
     return '';
   }
   return 'https://static.toss.im/png-icons/securities/icn-sec-fill-$normalizedSymbol.png';
@@ -6578,7 +6709,7 @@ class _StockTradingChartWorkspace extends StatelessWidget {
     required this.onSymbolSelected,
   });
 
-  final TossStockApi api;
+  final TradingDashboardApi api;
   final _StockTradingMarketConfig config;
   final String marketCode;
   final String symbol;
@@ -7003,6 +7134,7 @@ class _StockTradingOrderWorkspace extends StatelessWidget {
     required this.quote,
     required this.loading,
     required this.error,
+    required this.onOrderbookPriceSelected,
   });
 
   final _StockTradingMarketConfig config;
@@ -7010,6 +7142,7 @@ class _StockTradingOrderWorkspace extends StatelessWidget {
   final TossStockQuote? quote;
   final bool loading;
   final String? error;
+  final void Function(String price, String side) onOrderbookPriceSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -7017,6 +7150,8 @@ class _StockTradingOrderWorkspace extends StatelessWidget {
       dashboard: dashboard,
       quote: quote,
       currency: config.badge,
+      quantityUnit: config.quantityUnit,
+      allowsFractionalQuantity: config.allowsFractionalQuantity,
     );
     final orderbook = dashboard?.orderbook;
     final askRows =
@@ -7029,75 +7164,96 @@ class _StockTradingOrderWorkspace extends StatelessWidget {
       for (final row in bidRows) _stockDoubleValue(row.volume) ?? 0,
     ].fold<double>(0, math.max);
 
-    Widget depthRow(String side, TossOrderbookEntry row, Color sideColor) {
+    Widget depthRow(
+      String side,
+      TossOrderbookEntry row,
+      Color sideColor,
+      String orderSide,
+    ) {
       final volume = _stockDoubleValue(row.volume) ?? 0;
       final ratio = maxVolume <= 0 ? 0.0 : (volume / maxVolume).clamp(0.0, 1.0);
-      return Container(
-        height: 34,
-        margin: const EdgeInsets.only(bottom: 6),
-        decoration: BoxDecoration(
-          color: sideColor.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: sideColor.withValues(alpha: 0.10)),
-        ),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: FractionallySizedBox(
-                  widthFactor: ratio,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: sideColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
+      final formattedPrice = _stockFormatNumber(row.price);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Tooltip(
+          message: '주문가격에 $formattedPrice 입력',
+          waitDuration: const Duration(milliseconds: 350),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              mouseCursor: SystemMouseCursors.click,
+              onTap: () => onOrderbookPriceSelected(row.price, orderSide),
+              child: Ink(
+                height: 34,
+                decoration: BoxDecoration(
+                  color: sideColor.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: sideColor.withValues(alpha: 0.10)),
+                ),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: FractionallySizedBox(
+                          widthFactor: ratio,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: sideColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 38,
+                            child: Text(
+                              side,
+                              style: TextStyle(
+                                color: sideColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              formattedPrice,
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                color: sideColor,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          SizedBox(
+                            width: 78,
+                            child: Text(
+                              _stockCompactNumber(volume),
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                color: KangColors.slate,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 38,
-                    child: Text(
-                      side,
-                      style: TextStyle(
-                        color: sideColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      _stockFormatNumber(row.price),
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        color: sideColor,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  SizedBox(
-                    width: 78,
-                    child: Text(
-                      _stockCompactNumber(volume),
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                        color: KangColors.slate,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
       );
     }
@@ -7176,7 +7332,7 @@ class _StockTradingOrderWorkspace extends StatelessWidget {
                 padding: const EdgeInsets.all(12),
                 children: [
                   for (final row in askRows)
-                    depthRow('매도', row, _stockSellColor),
+                    depthRow('매도', row, _stockSellColor, 'SELL'),
                   const SizedBox(height: 8),
                   Divider(
                     height: 1,
@@ -7184,7 +7340,7 @@ class _StockTradingOrderWorkspace extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   for (final row in bidRows)
-                    depthRow('매수', row, _stockBuyColor),
+                    depthRow('매수', row, _stockBuyColor, 'BUY'),
                 ],
               )
             : Center(
@@ -7216,23 +7372,31 @@ class _StockTradingOrderWorkspace extends StatelessWidget {
               for (final ratio in scenarios) ...[
                 Builder(
                   builder: (context) {
-                    final quantity =
+                    final rawQuantity =
                         readiness.buyingPower == null ||
                             readiness.referencePrice == null
                         ? null
-                        : (readiness.buyingPower! *
-                                  ratio /
-                                  readiness.referencePrice!)
-                              .floor();
+                        : readiness.buyingPower! *
+                              ratio /
+                              readiness.referencePrice!;
+                    final quantity = rawQuantity == null
+                        ? null
+                        : readiness.allowsFractionalQuantity
+                        ? rawQuantity
+                        : rawQuantity.floorToDouble();
                     final referencePrice = readiness.referencePrice;
                     final amount = quantity == null || referencePrice == null
                         ? null
                         : quantity * referencePrice;
-                    final amountLabel = referencePrice == null
+                    final amountLabel =
+                        referencePrice == null || quantity == null
                         ? '금액 계산 대기'
-                        : quantity == 0
-                        ? '최소 1주 ${_stockChartValue(referencePrice)} ${readiness.currency} 필요'
+                        : quantity <= 0
+                        ? '최소 주문 ${_stockChartValue(referencePrice)} ${readiness.currency} 확인'
                         : '${_stockChartValue(amount)} ${readiness.currency}';
+                    final quantityLabel = quantity == null
+                        ? '--${readiness.quantityUnit}'
+                        : '${_stockFormatNumber(readiness.allowsFractionalQuantity ? _stockTrimDecimal(quantity, digits: 6) : quantity.toStringAsFixed(0))}${readiness.quantityUnit}';
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -7255,9 +7419,7 @@ class _StockTradingOrderWorkspace extends StatelessWidget {
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              quantity == null
-                                  ? '--주'
-                                  : '${_stockFormatNumber('$quantity')}주',
+                              quantityLabel,
                               style: const TextStyle(
                                 color: KangColors.ink,
                                 fontSize: 12,
@@ -7296,7 +7458,7 @@ class _StockTradingOrderWorkspace extends StatelessWidget {
         ('현재가 수신', readiness.referencePrice != null),
         ('호가 수신', readiness.hasOrderbook),
         ('주문가능금액 조회', readiness.buyingPower != null),
-        ('최소 1주 가능', readiness.canBuyMinimum),
+        ('최소 주문 가능', readiness.canBuyMinimum),
       ];
       return _StockTradingWorkspaceSurface(
         title: '주문 전 체크',
@@ -7552,7 +7714,7 @@ class _StockTradingExecutionWorkspace extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${holding.symbol} · ${_stockFormatNumber(holding.quantity)}주',
+                    '${holding.symbol} · ${_stockFormatNumber(holding.quantity)}${config.quantityUnit}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -7657,7 +7819,7 @@ class _StockTradingExecutionWorkspace extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              '${_stockFormatNumber(order.quantity)}주 · ${_stockFormatNumber(order.price)}',
+              '${_stockFormatNumber(order.quantity)}${config.quantityUnit} · ${_stockFormatNumber(order.price)}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -7713,7 +7875,10 @@ class _StockTradingExecutionWorkspace extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              _stockExecutionDetail(execution),
+              _stockExecutionDetail(
+                execution,
+                quantityUnit: config.quantityUnit,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
@@ -8292,6 +8457,8 @@ class _StockTradingTechnicalProfile {
 class _StockTradingOrderReadiness {
   const _StockTradingOrderReadiness({
     required this.currency,
+    required this.quantityUnit,
+    required this.allowsFractionalQuantity,
     required this.bestAsk,
     required this.bestBid,
     required this.lastPrice,
@@ -8303,6 +8470,8 @@ class _StockTradingOrderReadiness {
   });
 
   final String currency;
+  final String quantityUnit;
+  final bool allowsFractionalQuantity;
   final double? bestAsk;
   final double? bestBid;
   final double? lastPrice;
@@ -8349,9 +8518,13 @@ class _StockTradingOrderReadiness {
 
   String get affordableQuantityLabel {
     if (buyingPower == null || referencePrice == null || referencePrice == 0) {
-      return '--주';
+      return '--$quantityUnit';
     }
-    return '${_stockFormatNumber('${(buyingPower! / referencePrice!).floor()}')}주';
+    final quantity = buyingPower! / referencePrice!;
+    final label = allowsFractionalQuantity
+        ? _stockTrimDecimal(quantity, digits: 6)
+        : '${quantity.floor()}';
+    return '${_stockFormatNumber(label)}$quantityUnit';
   }
 
   String get imbalanceLabel => '${imbalance.toStringAsFixed(1)}%';
@@ -8366,6 +8539,8 @@ class _StockTradingOrderReadiness {
     required TossStockDashboard? dashboard,
     required TossStockQuote? quote,
     required String currency,
+    required String quantityUnit,
+    required bool allowsFractionalQuantity,
   }) {
     final orderbook = dashboard?.orderbook;
     final asks = orderbook?.asks ?? const <TossOrderbookEntry>[];
@@ -8373,6 +8548,8 @@ class _StockTradingOrderReadiness {
     final summary = dashboard?.summary;
     return _StockTradingOrderReadiness(
       currency: currency,
+      quantityUnit: quantityUnit,
+      allowsFractionalQuantity: allowsFractionalQuantity,
       bestAsk: asks.isEmpty ? null : _stockDoubleValue(asks.first.price),
       bestBid: bids.isEmpty ? null : _stockDoubleValue(bids.first.price),
       lastPrice: quote?.lastPriceValue,
@@ -8492,9 +8669,10 @@ class _StockTradingMarketBoard extends StatelessWidget {
     required this.error,
     required this.selectedInterval,
     required this.onIntervalChanged,
+    required this.onOrderbookPriceSelected,
   });
 
-  final TossStockApi api;
+  final TradingDashboardApi api;
   final _StockTradingMarketConfig config;
   final String marketCode;
   final String symbol;
@@ -8504,6 +8682,7 @@ class _StockTradingMarketBoard extends StatelessWidget {
   final String? error;
   final _StockTradingChartInterval selectedInterval;
   final ValueChanged<_StockTradingChartInterval> onIntervalChanged;
+  final void Function(String price, String side) onOrderbookPriceSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -8512,7 +8691,7 @@ class _StockTradingMarketBoard extends StatelessWidget {
       icon: Icons.candlestick_chart_rounded,
       color: config.color,
       trailing: Text(
-        loading ? '조회 중' : '토스 시세',
+        loading ? '조회 중' : '${config.providerLabel} 시세',
         style: const TextStyle(
           color: KangColors.slate,
           fontSize: 12,
@@ -8538,6 +8717,7 @@ class _StockTradingMarketBoard extends StatelessWidget {
             dashboard: dashboard,
             loading: loading,
             error: error,
+            onOrderbookPriceSelected: onOrderbookPriceSelected,
           );
 
           if (compact) {
@@ -8582,7 +8762,7 @@ class _StockTradingChartPlaceholder extends StatefulWidget {
     required this.onIntervalChanged,
   });
 
-  final TossStockApi api;
+  final TradingDashboardApi api;
   final Color color;
   final String marketCode;
   final String symbol;
@@ -9037,19 +9217,21 @@ class _StockTradingQuotePlaceholder extends StatelessWidget {
     required this.dashboard,
     required this.loading,
     required this.error,
+    required this.onOrderbookPriceSelected,
   });
 
   final _StockTradingMarketConfig config;
   final TossStockDashboard? dashboard;
   final bool loading;
   final String? error;
+  final void Function(String price, String side) onOrderbookPriceSelected;
 
   @override
   Widget build(BuildContext context) {
     final orderbook = dashboard?.orderbook;
     final rows = [
-      ...?orderbook?.asks.take(5).map((item) => ('매도', item.price)),
-      ...?orderbook?.bids.take(5).map((item) => ('매수', item.price)),
+      ...?orderbook?.asks.take(5).map((item) => ('매도', item.price, 'SELL')),
+      ...?orderbook?.bids.take(5).map((item) => ('매수', item.price, 'BUY')),
     ];
 
     return Container(
@@ -9103,35 +9285,52 @@ class _StockTradingQuotePlaceholder extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final row = rows[index];
                       final sideColor = _stockSideColor(row.$1);
-                      return Container(
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: sideColor.withValues(alpha: 0.065),
+                      final formattedPrice = _stockFormatNumber(row.$2);
+                      return Tooltip(
+                        message: '주문가격에 $formattedPrice 입력',
+                        waitDuration: const Duration(milliseconds: 350),
+                        child: Material(
+                          color: Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: sideColor.withValues(alpha: 0.10),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            mouseCursor: SystemMouseCursors.click,
+                            onTap: () =>
+                                onOrderbookPriceSelected(row.$2, row.$3),
+                            child: Ink(
+                              height: 36,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: sideColor.withValues(alpha: 0.065),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: sideColor.withValues(alpha: 0.10),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    row.$1,
+                                    style: TextStyle(
+                                      color: sideColor,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    formattedPrice,
+                                    style: TextStyle(
+                                      color: sideColor,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(
-                              row.$1,
-                              style: TextStyle(
-                                color: sideColor,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              _stockFormatNumber(row.$2),
-                              style: TextStyle(
-                                color: sideColor,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
                         ),
                       );
                     },
@@ -9348,16 +9547,22 @@ class _StockTradingOrderPanel extends StatefulWidget {
     required this.dashboard,
     required this.quote,
     required this.loading,
+    required this.selectedOrderbookPrice,
+    required this.selectedOrderbookSide,
+    required this.selectedOrderbookPriceSerial,
     required this.onOrderSubmitted,
   });
 
-  final TossStockApi api;
+  final TradingDashboardApi api;
   final _StockTradingMarketConfig config;
   final String marketCode;
   final String symbol;
   final TossStockDashboard? dashboard;
   final TossStockQuote? quote;
   final bool loading;
+  final String? selectedOrderbookPrice;
+  final String? selectedOrderbookSide;
+  final int selectedOrderbookPriceSerial;
   final VoidCallback onOrderSubmitted;
 
   @override
@@ -9384,11 +9589,17 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
   @override
   void didUpdateWidget(covariant _StockTradingOrderPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.symbol != widget.symbol ||
+    final symbolChanged =
+        oldWidget.symbol != widget.symbol ||
+        oldWidget.marketCode != widget.marketCode;
+    if (oldWidget.selectedOrderbookPriceSerial !=
+        widget.selectedOrderbookPriceSerial) {
+      _applySelectedOrderbookSelection();
+    }
+    if (symbolChanged ||
         oldWidget.dashboard != widget.dashboard ||
-        oldWidget.quote != widget.quote ||
-        oldWidget.marketCode != widget.marketCode) {
-      _syncOrderDefaults();
+        oldWidget.quote != widget.quote) {
+      _syncOrderDefaults(force: symbolChanged);
     }
   }
 
@@ -9427,6 +9638,32 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
     }
   }
 
+  void _applySelectedOrderbookSelection() {
+    final price = _stockCleanOrderInput(widget.selectedOrderbookPrice ?? '');
+    if (price.isEmpty) {
+      return;
+    }
+    final side = (widget.selectedOrderbookSide ?? '').trim().toUpperCase();
+    final formattedPrice = _stockFormatEditableNumber(
+      price,
+      allowDecimal: true,
+    );
+    _priceController.value = TextEditingValue(
+      text: formattedPrice,
+      selection: TextSelection.collapsed(offset: formattedPrice.length),
+    );
+    if (side == 'BUY' || side == 'SELL') {
+      _selectedSide = side;
+    }
+    if (_stockCleanOrderInput(_quantityController.text).isEmpty) {
+      _quantityController.value = const TextEditingValue(
+        text: '1',
+        selection: TextSelection.collapsed(offset: 1),
+      );
+    }
+    _lastAutoPrice = '';
+  }
+
   bool get _canSubmit {
     final tradingAvailable = widget.dashboard?.summary.tradingAvailable == true;
     return !_submitting &&
@@ -9445,6 +9682,7 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
       symbol: symbol,
       price: price,
       quantity: quantity,
+      allowFractionalQuantity: widget.config.allowsFractionalQuantity,
     );
     if (validationError != null) {
       _showOrderSnack(validationError, _stockFallColor);
@@ -9462,7 +9700,11 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('토스증권 계좌로 실제 주문을 전송합니다.'),
+              Text(
+                widget.config.usesOrderPreflight
+                    ? '${widget.config.providerLabel} 주문 테스트를 먼저 통과한 뒤 실제 주문을 전송합니다.'
+                    : '${widget.config.providerLabel} 기준 실제 주문을 전송합니다.',
+              ),
               const SizedBox(height: 12),
               _StockTradingOrderConfirmRow(label: '종목', value: symbol),
               _StockTradingOrderConfirmRow(label: '구분', value: sideLabel),
@@ -9473,11 +9715,14 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
               ),
               _StockTradingOrderConfirmRow(
                 label: '수량',
-                value: '${_stockFormatNumber(quantity)}주',
+                value:
+                    '${_stockFormatNumber(quantity)}${widget.config.quantityUnit}',
               ),
               const SizedBox(height: 10),
               Text(
-                '확인을 누르면 실제 주문이 접수됩니다.',
+                widget.config.usesOrderPreflight
+                    ? '확인을 누르면 주문 가능 여부를 검증한 뒤 실제 주문이 접수됩니다.'
+                    : '확인을 누르면 실제 주문이 접수됩니다.',
                 style: TextStyle(color: sideColor, fontWeight: FontWeight.w900),
               ),
             ],
@@ -9503,20 +9748,35 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
 
     setState(() {
       _submitting = true;
-      _orderStatus = '주문 전송 중입니다.';
+      _orderStatus = widget.config.usesOrderPreflight
+          ? '주문 가능 여부를 확인하는 중입니다.'
+          : '주문 전송 중입니다.';
     });
 
     try {
-      final result = await widget.api.submitOrder(
-        TossOrderSubmitRequest(
-          symbol: symbol,
-          side: _selectedSide,
-          orderType: 'LIMIT',
-          quantity: quantity,
-          price: price,
-          orderAmount: '',
-        ),
+      final orderRequest = TossOrderSubmitRequest(
+        symbol: symbol,
+        side: _selectedSide,
+        orderType: 'LIMIT',
+        quantity: quantity,
+        price: price,
+        orderAmount: '',
       );
+      if (widget.config.usesOrderPreflight) {
+        final preflight = await widget.api.testOrder(orderRequest);
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _orderStatus = preflight.message.trim().isNotEmpty
+              ? preflight.message.trim()
+              : '주문 테스트를 통과했습니다. 실제 주문을 전송합니다.';
+        });
+      }
+      if (mounted) {
+        setState(() => _orderStatus = '주문 전송 중입니다.');
+      }
+      final result = await widget.api.submitOrder(orderRequest);
       if (!mounted) {
         return;
       }
@@ -9654,8 +9914,14 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
               controller: _quantityController,
               label: '수량',
               hintText: '1',
-              keyboardType: TextInputType.number,
-              inputFormatters: const [_StockTradingNumberTextInputFormatter()],
+              keyboardType: TextInputType.numberWithOptions(
+                decimal: widget.config.allowsFractionalQuantity,
+              ),
+              inputFormatters: [
+                _StockTradingNumberTextInputFormatter(
+                  allowDecimal: widget.config.allowsFractionalQuantity,
+                ),
+              ],
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
@@ -9679,14 +9945,22 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
                       ),
                     )
                   : const Icon(Icons.verified_user_outlined),
-              label: Text(_submitting ? '주문 전송 중' : '$sideLabel 주문 확인'),
+              label: Text(
+                _submitting
+                    ? widget.config.usesOrderPreflight
+                          ? '검증/전송 중'
+                          : '주문 전송 중'
+                    : '$sideLabel 주문 확인',
+              ),
               onPressed: _canSubmit ? _confirmAndSubmitOrder : null,
             ),
             const SizedBox(height: 12),
             _CalendarMessage(
               icon: Icons.security_rounded,
               text: tradingAvailable
-                  ? '최종 확인창에서 확인해야 실제 주문이 전송됩니다.'
+                  ? widget.config.usesOrderPreflight
+                        ? '주문 테스트를 통과한 뒤 실제 주문이 전송됩니다.'
+                        : '최종 확인창에서 확인해야 실제 주문이 전송됩니다.'
                   : tradingNotice,
               color: tradingAvailable ? selectedSideColor : KangColors.slate,
             ),
@@ -10011,7 +10285,10 @@ class _StockTradingExecutionPanel extends StatelessWidget {
                                 ? '매수'
                                 : '매도',
                             title: execution.symbol,
-                            detail: _stockExecutionDetail(execution),
+                            detail: _stockExecutionDetail(
+                              execution,
+                              quantityUnit: config.quantityUnit,
+                            ),
                             color: _stockSideColor(execution.side),
                           ),
                       ],
@@ -10031,7 +10308,7 @@ class _StockTradingExecutionPanel extends StatelessWidget {
                                 : '매도',
                             title: order.symbol,
                             detail:
-                                '${_stockFormatNumber(order.quantity)}주 · ${_stockFormatNumber(order.price)} ${order.currency}',
+                                '${_stockFormatNumber(order.quantity)}${config.quantityUnit} · ${_stockFormatNumber(order.price)} ${order.currency}',
                             color: _stockSideColor(order.side),
                           ),
                       ],
@@ -10497,7 +10774,10 @@ String _stockTradingOrderNotice({
   return '실전 주문 가능 여부를 확인하지 못했습니다.';
 }
 
-String _stockExecutionDetail(TossExecution execution) {
+String _stockExecutionDetail(
+  TossExecution execution, {
+  String quantityUnit = '주',
+}) {
   final quantity = _stockFormatNumber(execution.filledQuantity);
   final averagePrice = execution.averageFilledPrice.trim();
   final filledAmount = execution.filledAmount.trim();
@@ -10506,13 +10786,14 @@ String _stockExecutionDetail(TossExecution execution) {
       : filledAmount.isNotEmpty
       ? _stockFormatNumber(filledAmount)
       : '-';
-  return '$quantity주 · $priceLabel ${execution.currency}';
+  return '$quantity$quantityUnit · $priceLabel ${execution.currency}';
 }
 
 String? _validateLimitOrder({
   required String symbol,
   required String price,
   required String quantity,
+  required bool allowFractionalQuantity,
 }) {
   if (!RegExp(r'^[A-Za-z0-9.\-]{1,20}$').hasMatch(symbol)) {
     return '종목 코드를 확인해 주세요.';
@@ -10521,12 +10802,17 @@ String? _validateLimitOrder({
   if (parsedPrice == null || parsedPrice <= 0) {
     return '주문 가격은 0보다 커야 합니다.';
   }
-  if (!RegExp(r'^\d+$').hasMatch(quantity)) {
-    return '수량은 1 이상의 정수만 입력할 수 있습니다.';
+  final quantityPattern = allowFractionalQuantity
+      ? RegExp(r'^\d+(\.\d+)?$')
+      : RegExp(r'^\d+$');
+  if (!quantityPattern.hasMatch(quantity)) {
+    return allowFractionalQuantity
+        ? '수량은 0보다 큰 숫자로 입력해 주세요.'
+        : '수량은 1 이상의 정수만 입력할 수 있습니다.';
   }
-  final parsedQuantity = int.tryParse(quantity);
+  final parsedQuantity = double.tryParse(quantity);
   if (parsedQuantity == null || parsedQuantity <= 0) {
-    return '수량은 1 이상이어야 합니다.';
+    return '수량은 0보다 커야 합니다.';
   }
   return null;
 }
@@ -11126,7 +11412,7 @@ class _StockTradingPlaceholderPanelState
   }
 }
 
-enum _StockTradingMarket { domestic, overseas }
+enum _StockTradingMarket { domestic, overseas, crypto }
 
 class _StockTradingMarketTabs extends StatelessWidget {
   const _StockTradingMarketTabs({
@@ -11165,6 +11451,16 @@ class _StockTradingMarketTabs extends StatelessWidget {
               title: '해외 주식',
               subtitle: 'NASDAQ · NYSE',
               onTap: () => onChanged(_StockTradingMarket.overseas),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: _StockTradingMarketTabButton(
+              selected: selected == _StockTradingMarket.crypto,
+              icon: Icons.currency_bitcoin_rounded,
+              title: '코인',
+              subtitle: 'Upbit · KRW',
+              onTap: () => onChanged(_StockTradingMarket.crypto),
             ),
           ),
         ],
@@ -11297,6 +11593,7 @@ class _StockTradingMarketHeader extends StatelessWidget {
 
 class _StockTradingMarketConfig {
   const _StockTradingMarketConfig({
+    required this.marketCode,
     required this.title,
     required this.description,
     required this.badge,
@@ -11305,8 +11602,14 @@ class _StockTradingMarketConfig {
     required this.balanceTitle,
     required this.balanceValue,
     required this.items,
+    required this.providerLabel,
+    this.quantityUnit = '주',
+    this.usesRemoteSearch = false,
+    this.allowsFractionalQuantity = false,
+    this.usesOrderPreflight = false,
   });
 
+  final String marketCode;
   final String title;
   final String description;
   final String badge;
@@ -11315,10 +11618,16 @@ class _StockTradingMarketConfig {
   final String balanceTitle;
   final String balanceValue;
   final List<_StockTradingMarketItem> items;
+  final String providerLabel;
+  final String quantityUnit;
+  final bool usesRemoteSearch;
+  final bool allowsFractionalQuantity;
+  final bool usesOrderPreflight;
 
   static _StockTradingMarketConfig byMarket(_StockTradingMarket market) {
     return switch (market) {
       _StockTradingMarket.domestic => const _StockTradingMarketConfig(
+        marketCode: 'KR',
         title: '국내 주식',
         description: '원화 기준 관심종목, 국내 주문, 체결 현황을 배치할 영역입니다.',
         badge: 'KRW',
@@ -11326,6 +11635,8 @@ class _StockTradingMarketConfig {
         color: Color(0xFF2563EB),
         balanceTitle: '보유/잔고',
         balanceValue: '원화 기준',
+        providerLabel: '토스증권',
+        usesRemoteSearch: true,
         items: [
           _StockTradingMarketItem(
             icon: Icons.star_border_rounded,
@@ -11345,6 +11656,7 @@ class _StockTradingMarketConfig {
         ],
       ),
       _StockTradingMarket.overseas => const _StockTradingMarketConfig(
+        marketCode: 'US',
         title: '해외 주식',
         description: '달러 기준 관심종목, 해외 주문, 환율/잔고를 배치할 영역입니다.',
         badge: 'USD',
@@ -11352,6 +11664,7 @@ class _StockTradingMarketConfig {
         color: Color(0xFF0F766E),
         balanceTitle: '환율/잔고',
         balanceValue: '달러 기준',
+        providerLabel: '토스증권',
         items: [
           _StockTradingMarketItem(
             icon: Icons.star_border_rounded,
@@ -11367,6 +11680,38 @@ class _StockTradingMarketConfig {
             icon: Icons.receipt_long_outlined,
             title: '체결 현황',
             value: '해외 주문',
+          ),
+        ],
+      ),
+      _StockTradingMarket.crypto => const _StockTradingMarketConfig(
+        marketCode: 'UPBIT',
+        title: '코인',
+        description: '업비트 원화마켓 관심코인, 호가, 잔고와 주문 현황입니다.',
+        badge: 'KRW',
+        icon: Icons.currency_bitcoin_rounded,
+        color: Color(0xFFF59E0B),
+        balanceTitle: '보유/잔고',
+        balanceValue: '원화 마켓',
+        providerLabel: '업비트',
+        quantityUnit: '코인',
+        usesRemoteSearch: true,
+        allowsFractionalQuantity: true,
+        usesOrderPreflight: true,
+        items: [
+          _StockTradingMarketItem(
+            icon: Icons.star_border_rounded,
+            title: '관심코인',
+            value: 'BTC · ETH · XRP',
+          ),
+          _StockTradingMarketItem(
+            icon: Icons.price_change_outlined,
+            title: '주문 패널',
+            value: '매수 · 매도',
+          ),
+          _StockTradingMarketItem(
+            icon: Icons.receipt_long_outlined,
+            title: '체결 현황',
+            value: '업비트 주문',
           ),
         ],
       ),

@@ -47,11 +47,15 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `ACADEMYINFO_SERVICE_KEY`, `SEOUL_SUBWAY_API_KEY`
 - `TOSSINVEST_API_BASE_URL`, `TOSSINVEST_CLIENT_ID`, `TOSSINVEST_CLIENT_SECRET`, `TOSSINVEST_ACCOUNT`
 - `TOSSINVEST_TRADING_ENABLED`, `TOSSINVEST_TRADING_ALLOWED_EMAILS`
+- `UPBIT_API_BASE_URL`, `UPBIT_ACCESS_KEY`, `UPBIT_SECRET_KEY`
+- `UPBIT_TRADING_ENABLED`, `UPBIT_TRADING_ALLOWED_EMAILS`
 - `APP_PUBLIC_URL`, `HTTP_USER_AGENT`, `BROWSER_USER_AGENT`
 - `DEFAULT_SUBWAY_STATION`, `DEFAULT_SUBWAY_LINE`
 - `SFTP_HOST`, `SFTP_PORT`, `SFTP_USERNAME`, `SFTP_PASSWORD`, `SFTP_REMOTE_PATH`
 
 토스증권 Open API는 콘솔의 허용 IP 설정이 필요합니다. 운영 서버에서 토스 조회가 `IP address not allowed`로 실패하면 `https://www.kang.ai.kr` 서버의 공인 IP를 토스증권 Open API 허용 IP에 등록하세요. 실제 주문 생성, 정정, 취소는 `TOSSINVEST_TRADING_ENABLED=true`이고 Firebase 이메일이 `TOSSINVEST_TRADING_ALLOWED_EMAILS`에 포함된 경우에만 동작합니다.
+
+업비트 Open API 키는 백엔드 환경변수에만 저장합니다. 코인 시세는 키 없이 조회되지만, 잔고와 실제 주문은 `UPBIT_ACCESS_KEY`, `UPBIT_SECRET_KEY`, `UPBIT_TRADING_ENABLED=true`, `UPBIT_TRADING_ALLOWED_EMAILS` 허용 이메일이 모두 설정된 경우에만 동작합니다. 실제 코인 주문은 최종 확인 후 업비트 주문 테스트 API(`/v1/orders/test`)를 통과한 경우에만 주문 생성 API(`/v1/orders`)로 전송하며, 백엔드 실주문 라우트도 주문 테스트를 다시 강제합니다.
 
 ## 프론트엔드 실행
 

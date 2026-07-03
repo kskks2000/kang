@@ -5,16 +5,58 @@ import 'package:http/http.dart' as http;
 
 import '../app_config.dart';
 
-class TossStockApi {
+abstract class TradingDashboardApi {
+  Future<TossOrderActionResult> cancelOrder(String orderId);
+
+  Future<TossOrderActionResult> modifyOrder({
+    required String orderId,
+    required String orderType,
+    required String quantity,
+    required String price,
+  });
+
+  Future<TossOpenOrder> loadOrder(String orderId);
+
+  Future<TossOrderSubmitResult> testOrder(TossOrderSubmitRequest order);
+
+  Future<TossOrderSubmitResult> submitOrder(TossOrderSubmitRequest order);
+
+  Future<TossStockDashboard> loadDashboard({
+    required String market,
+    String? symbol,
+    List<String> symbols = const [],
+    String candleInterval = '1m',
+  });
+
+  Future<TossStockCandlesResult> loadCandles({
+    required String market,
+    required String symbol,
+    String candleInterval = '1m',
+    int count = 200,
+    String? before,
+  });
+
+  Future<TossStockSearchResult> searchStocks({
+    required String market,
+    required String query,
+    int limit = 30,
+  });
+
+  void close();
+}
+
+class TossStockApi implements TradingDashboardApi {
   TossStockApi({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
 
+  @override
   Future<TossOrderActionResult> cancelOrder(String orderId) async {
     final encodedOrderId = Uri.encodeComponent(orderId);
     return _postOrderAction('/toss/orders/$encodedOrderId/cancel', const {});
   }
 
+  @override
   Future<TossOrderActionResult> modifyOrder({
     required String orderId,
     required String orderType,
@@ -33,6 +75,7 @@ class TossStockApi {
     return _postOrderAction('/toss/orders/$encodedOrderId/modify', payload);
   }
 
+  @override
   Future<TossOpenOrder> loadOrder(String orderId) async {
     final user = FirebaseAuth.instance.currentUser;
     final idToken = await user?.getIdToken();
@@ -59,6 +102,23 @@ class TossStockApi {
     return TossOpenOrder.fromJson(decoded);
   }
 
+  @override
+  Future<TossOrderSubmitResult> testOrder(TossOrderSubmitRequest order) async {
+    return TossOrderSubmitResult(
+      status: 'skipped',
+      orderId: '',
+      clientOrderId: '',
+      symbol: order.symbol,
+      side: order.side,
+      orderType: order.orderType,
+      quantity: order.quantity,
+      price: order.price,
+      timeInForce: order.timeInForce,
+      message: '토스증권 주문은 최종 확인 후 바로 전송됩니다.',
+    );
+  }
+
+  @override
   Future<TossOrderSubmitResult> submitOrder(
     TossOrderSubmitRequest order,
   ) async {
@@ -120,6 +180,7 @@ class TossStockApi {
     return TossOrderActionResult.fromJson(decoded);
   }
 
+  @override
   Future<TossStockDashboard> loadDashboard({
     required String market,
     String? symbol,
@@ -182,6 +243,7 @@ class TossStockApi {
     return TossStockDashboard.fromJson(_decodeJsonObject(response));
   }
 
+  @override
   Future<TossStockCandlesResult> loadCandles({
     required String market,
     required String symbol,
@@ -192,9 +254,7 @@ class TossStockApi {
     final user = FirebaseAuth.instance.currentUser;
     final idToken = await user?.getIdToken();
     if (idToken == null || idToken.isEmpty) {
-      throw const TossStockApiException(
-        '로그인 인증이 만료되었습니다. 다시 로그인해 주세요.',
-      );
+      throw const TossStockApiException('로그인 인증이 만료되었습니다. 다시 로그인해 주세요.');
     }
 
     final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
@@ -227,6 +287,7 @@ class TossStockApi {
     return TossStockCandlesResult.fromJson(decoded);
   }
 
+  @override
   Future<TossStockSearchResult> searchStocks({
     required String market,
     required String query,
@@ -263,6 +324,215 @@ class TossStockApi {
     return TossStockSearchResult.fromJson(decoded);
   }
 
+  @override
+  void close() {
+    _client.close();
+  }
+}
+
+class UpbitCryptoApi implements TradingDashboardApi {
+  UpbitCryptoApi({http.Client? client}) : _client = client ?? http.Client();
+
+  final http.Client _client;
+
+  @override
+  Future<TossOrderActionResult> cancelOrder(String orderId) async {
+    final encodedOrderId = Uri.encodeComponent(orderId);
+    return _postOrderAction('/upbit/orders/$encodedOrderId/cancel', const {});
+  }
+
+  @override
+  Future<TossOrderActionResult> modifyOrder({
+    required String orderId,
+    required String orderType,
+    required String quantity,
+    required String price,
+  }) {
+    throw const TossStockApiException(
+      '업비트 주문 정정은 아직 지원하지 않습니다. 주문 취소 후 새 주문을 이용해 주세요.',
+    );
+  }
+
+  @override
+  Future<TossOpenOrder> loadOrder(String orderId) async {
+    final encodedOrderId = Uri.encodeComponent(orderId);
+    final decoded = await _authenticatedGet('/upbit/orders/$encodedOrderId');
+    return TossOpenOrder.fromJson(decoded);
+  }
+
+  @override
+  Future<TossOrderSubmitResult> testOrder(TossOrderSubmitRequest order) async {
+    final decoded = await _authenticatedPost(
+      '/upbit/orders/test',
+      order.toJson(),
+    );
+    return TossOrderSubmitResult.fromJson(decoded);
+  }
+
+  @override
+  Future<TossOrderSubmitResult> submitOrder(
+    TossOrderSubmitRequest order,
+  ) async {
+    final decoded = await _authenticatedPost('/upbit/orders', order.toJson());
+    return TossOrderSubmitResult.fromJson(decoded);
+  }
+
+  Future<TossOrderActionResult> _postOrderAction(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final decoded = await _authenticatedPost(path, body);
+    return TossOrderActionResult.fromJson(decoded);
+  }
+
+  @override
+  Future<TossStockDashboard> loadDashboard({
+    required String market,
+    String? symbol,
+    List<String> symbols = const [],
+    String candleInterval = '1m',
+  }) async {
+    final queryParameters = <String, String>{
+      'market': market.trim().toUpperCase().isEmpty
+          ? 'KRW'
+          : market.trim().toUpperCase(),
+      'candleInterval': candleInterval.trim().toLowerCase(),
+    };
+    final selectedSymbol = symbol?.trim().toUpperCase();
+    if (selectedSymbol != null && selectedSymbol.isNotEmpty) {
+      queryParameters['symbol'] = selectedSymbol;
+    }
+    final scopedSymbols = <String>[];
+    for (final rawSymbol in symbols) {
+      final scopedSymbol = rawSymbol.trim().toUpperCase();
+      if (scopedSymbol.isNotEmpty && !scopedSymbols.contains(scopedSymbol)) {
+        scopedSymbols.add(scopedSymbol);
+      }
+      if (scopedSymbols.length >= 24) {
+        break;
+      }
+    }
+    if (scopedSymbols.isNotEmpty) {
+      queryParameters['symbols'] = scopedSymbols.join(',');
+    }
+    final decoded = await _authenticatedGet(
+      '/upbit/crypto-dashboard',
+      queryParameters: queryParameters,
+    );
+    return TossStockDashboard.fromJson(decoded);
+  }
+
+  @override
+  Future<TossStockCandlesResult> loadCandles({
+    required String market,
+    required String symbol,
+    String candleInterval = '1m',
+    int count = 200,
+    String? before,
+  }) async {
+    final queryParameters = <String, String>{
+      'market': market.trim().toUpperCase().isEmpty
+          ? 'KRW'
+          : market.trim().toUpperCase(),
+      'symbol': symbol.trim().toUpperCase(),
+      'candleInterval': candleInterval.trim().toLowerCase(),
+      'count': count.clamp(1, 200).toString(),
+    };
+    final beforeValue = before?.trim();
+    if (beforeValue != null && beforeValue.isNotEmpty) {
+      queryParameters['before'] = beforeValue;
+    }
+    final decoded = await _authenticatedGet(
+      '/upbit/candles',
+      queryParameters: queryParameters,
+    );
+    return TossStockCandlesResult.fromJson(decoded);
+  }
+
+  @override
+  Future<TossStockSearchResult> searchStocks({
+    required String market,
+    required String query,
+    int limit = 30,
+  }) async {
+    final decoded = await _authenticatedGet(
+      '/upbit/markets/search',
+      queryParameters: {
+        'market': market.trim().toUpperCase().isEmpty
+            ? 'KRW'
+            : market.trim().toUpperCase(),
+        'query': query,
+        'limit': limit.toString(),
+      },
+    );
+    return TossStockSearchResult.fromJson(decoded);
+  }
+
+  Future<Map<String, dynamic>> _authenticatedGet(
+    String path, {
+    Map<String, String>? queryParameters,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final idToken = await user?.getIdToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw const TossStockApiException('로그인 인증이 만료되었습니다. 다시 로그인해 주세요.');
+    }
+
+    final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final response = await _client.get(
+      Uri.parse('$baseUrl$path').replace(queryParameters: queryParameters),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $idToken',
+      },
+    );
+    return _decodeTradingResponse(
+      response,
+      fallbackMessage: '업비트 데이터를 불러오지 못했습니다.',
+    );
+  }
+
+  Future<Map<String, dynamic>> _authenticatedPost(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final idToken = await user?.getIdToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw const TossStockApiException('로그인 인증이 만료되었습니다. 다시 로그인해 주세요.');
+    }
+
+    final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final response = await _client.post(
+      Uri.parse('$baseUrl$path'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+    return _decodeTradingResponse(
+      response,
+      fallbackMessage: '업비트 주문 요청을 처리하지 못했습니다.',
+    );
+  }
+
+  Map<String, dynamic> _decodeTradingResponse(
+    http.Response response, {
+    required String fallbackMessage,
+  }) {
+    final decoded = _decodeJsonObject(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail = decoded['detail']?.toString();
+      throw TossStockApiException(
+        detail?.isNotEmpty == true ? detail! : fallbackMessage,
+      );
+    }
+    return decoded;
+  }
+
+  @override
   void close() {
     _client.close();
   }

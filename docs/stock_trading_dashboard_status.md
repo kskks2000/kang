@@ -8,6 +8,8 @@
 - 기존에 적용 완료된 항목을 되돌리거나 중복 구현하지 않습니다.
 - 토스증권 Open API 주문 관련 비밀값, 계좌, 허용 이메일, 토큰은 로그, 문서, diff에 노출하지 않습니다.
 - 실제 주문 전송 기능은 Firebase 인증, `TOSSINVEST_TRADING_ENABLED=true`, 허용 이메일, 프론트엔드 최종 확인 UI 조건을 모두 지켜야 합니다.
+- 업비트 Open API 주문 관련 비밀값, 허용 이메일, 토큰도 로그, 문서, diff에 노출하지 않습니다.
+- 업비트 실제 주문 전송 기능은 Firebase 인증, `UPBIT_TRADING_ENABLED=true`, 허용 이메일, 프론트엔드 최종 확인 UI, 업비트 주문 테스트 API 통과 조건을 모두 지켜야 합니다.
 - 완료 보고 전에는 `https://www.kang.ai.kr` 배포 및 운영 도메인 확인을 끝냅니다.
 
 ## 적용 완료 항목
@@ -23,6 +25,7 @@
 9. 삼성전자 등 watchlist 주가가 최신 가격과 일봉 등락률 기준으로 보이도록 수정했습니다. 클릭 시 잠시 보였다가 사라지는 문제를 막기 위해 quote cache와 watchlist daily change fallback을 함께 사용합니다.
 10. 종목 아이콘이 흐릿해 보이는 문제를 줄이기 위해 주요 종목은 선명한 브랜드 컬러 기반 심볼 마크로 렌더링하도록 변경했습니다.
 11. 주식 거래 대시보드의 주요 패널 구분선을 드래그해서 너비와 높이를 조정할 수 있도록 변경했습니다. 좌측 메인 영역과 우측 주문 영역 사이의 너비, 관심종목/차트 사이의 높이, 주문/체결·잔고 사이의 높이를 조정할 수 있으며, 구분선을 더블클릭하면 기본 비율로 되돌립니다.
+12. 국내/해외 주식 옆에 코인 탭을 추가하고 업비트 KRW 마켓 시세, 호가, 잔고, 미체결/체결, 주문 생성/취소 흐름을 연결했습니다. 코인 실주문은 최종 확인 후 `/v1/orders/test` 검증을 통과한 경우에만 `/v1/orders`로 전송합니다. 백엔드 실주문 라우트도 주문 테스트를 다시 강제하므로 프론트 우회 호출도 테스트 없이 실주문으로 이어지지 않습니다.
 
 ## 관련 코드
 
@@ -33,11 +36,15 @@
   - `_StockTradingWatchlistPanelState`는 검색 결과와 daily change fallback을 관리합니다.
   - `_quoteCache`, `_currentMarketQuotes`, `_activeQuote`는 종목 선택 시 가격이 사라지지 않게 유지하는 데 중요합니다.
 - `frontend/lib/services/toss_stock_api.dart`
-  - 토스 주식 대시보드, 캔들, 주문, 체결/잔고 응답 모델과 API 클라이언트가 있습니다.
+  - 토스 주식과 업비트 코인 대시보드, 캔들, 주문, 체결/잔고 응답 모델과 API 클라이언트가 있습니다.
 - `backend/app/tossinvest_service.py`
   - 토스증권 Open API 호출, dashboard 응답 조립, 주문 생성/정정/취소, watchlist 일봉 등락률 fallback이 있습니다.
+- `backend/app/upbit_service.py`
+  - 업비트 Open API 호출, 공개 시세/호가/캔들, 잔고/주문 조회, 주문 테스트, 실제 주문 생성/취소 응답 조립이 있습니다.
 - `backend/app/schemas.py`
-  - 토스 주식 API 요청/응답 스키마가 있습니다.
+  - 토스 주식과 업비트 코인 API 요청/응답 스키마가 있습니다.
+- `backend/tests/test_upbit_service.py`
+  - 업비트 주문 payload, 권한 게이트, 주문 테스트 API, 실제 주문 API path를 mock 기반으로 검증합니다.
 
 ## 검증 기준
 
