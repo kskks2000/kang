@@ -24,6 +24,13 @@
 - `database/`: 운영 DB 스키마와 마이그레이션 SQL입니다.
 - `database/dwms/`: PostgreSQL 11용 엔터프라이즈 WMS `dwms` 기준선입니다. 구조와 운영 전제는 `database/dwms/README.md`에 있습니다.
 - `scripts/apply_dwms_schema.py`: 00~11 DWMS 모듈을 원자적으로 적용하고 카탈로그·RLS·무결성 보호를 검증합니다.
+- `database/deims/`: PostgreSQL 11용 엔터프라이즈 수출입물류 EIMS `deims` 기준선입니다. 구조와 운영 전제는 `database/deims/README.md`에 있습니다.
+- `scripts/apply_deims_schema.py`: 00~12 DEIMS 모듈을 원자적으로 적용하고 카탈로그·RLS·무결성 보호를 검증합니다.
+- `database/doms/`: PostgreSQL 11용 엔터프라이즈 오더관리 DOMS `doms` 기준선입니다. 구조와 운영 전제는 `database/doms/README.md`에 있습니다.
+- `scripts/apply_doms_schema.py`: 00~10 DOMS 모듈을 원자적으로 적용하고 카탈로그·RLS·주문·결제·재고약속·반품·회계 무결성을 검증합니다.
+- `database/etms/`: PostgreSQL 11용 엔터프라이즈 운송관리 ETMS `etms` 기준선입니다. 구조와 운영 전제는 `database/etms/README.md`에 있습니다.
+- `scripts/apply_etms_schema.py`: 00~11 ETMS 모듈을 원자적으로 적용하고 SQL·카탈로그·시드 지문, RLS/FORCE RLS와 운송 무결성을 검증합니다.
+- `scripts/audit_etms_schema.py`, `scripts/smoke_test_etms_schema.py`: ETMS의 읽기 전용 카탈로그 감사와 rollback-only 업무 무결성 검증입니다.
 - `docs/stock_trading_dashboard_status.md`: 주식 거래 대시보드의 완료 항목, 구현 메모, 다음 작업 전 확인 사항입니다. 주식 거래 화면을 수정하기 전 반드시 먼저 읽습니다.
 
 ## 중요한 계약
@@ -41,6 +48,10 @@
 - `TOSSINVEST_CLIENT_ID`, `TOSSINVEST_CLIENT_SECRET`, `TOSSINVEST_ACCOUNT`, `TOSSINVEST_TRADING_ALLOWED_EMAILS`는 비밀값 또는 개인정보로 취급하고 로그, 문서, diff에 실제 값을 노출하지 마세요.
 - 운영 서버의 공인 IP가 토스증권 Open API 콘솔 허용 IP에 등록되어 있어야 합니다. 운영 확인 중 `IP address not allowed`가 나오면 코드보다 토스 콘솔 IP 허용 목록을 먼저 확인하세요.
 - DWMS 기준선 변경 전에는 `database/dwms/README.md`를 먼저 읽고, 변경 후 `python scripts/apply_dwms_schema.py --dry-run`과 `--verify-only`를 실행합니다. 운영 배포 후 00~11 기준 파일은 체크섬이 잠긴 것으로 보고 직접 고치지 말고 새 forward-only 마이그레이션을 추가합니다.
+- DEIMS 기준선 변경 전에는 `database/deims/README.md`를 먼저 읽고, 변경 후 `python scripts/apply_deims_schema.py --dry-run`과 `--verify-only`를 실행합니다. 운영 배포 후 00~12 기준 파일은 체크섬이 잠긴 것으로 보고 직접 고치지 말고 새 forward-only 마이그레이션을 추가합니다.
+- DOMS 기준선 변경 전에는 `database/doms/README.md`를 먼저 읽고, 변경 후 `python scripts/apply_doms_schema.py --dry-run`, 실제 적용, `--verify-only`, `python scripts/smoke_test_doms_schema.py`를 실행합니다. 운영 배포 후 00~10 기준 파일은 체크섬이 잠긴 것으로 보고 직접 고치지 말고 새 forward-only 마이그레이션을 추가합니다.
+- ETMS 변경 전에는 `database/etms/README.md`와 `docs/etms_database_design.md`를 먼저 읽습니다. 기존 운영 스키마는 `--dry-run`, `smoke_test_etms_schema.py --with-pending-forward-dry-run`, 실제 적용, `--verify-only`, `audit_etms_schema.py`, 기본 smoke 순서로 검증합니다. 완전히 빈 스키마의 신규 설치 검증에만 `--with-baseline-dry-run`을 사용합니다. 운영 배포된 00~11과 `migrations/20260713_02`~`06`은 SQL·카탈로그·시드 체크섬이 잠겼으므로 직접 고치지 말고 다음 번호의 forward-only migration을 추가합니다.
+- ETMS tenant 권한은 임의 `SET etms.tenant_id`가 아니라 `issue_auth_session(...)`과 트랜잭션별 `bind_request_context(...)`로만 발급합니다. 앱 역할에 table owner, `BYPASSRLS`, 보호 context/auth session 테이블 직접 권한, 전체 함수 EXECUTE를 부여하지 않습니다.
 
 ## 주식 거래 대시보드 작업 전 확인
 
@@ -108,6 +119,9 @@ Invoke-WebRequest -Uri https://www.kang.ai.kr/health -UseBasicParsing
 - 백엔드 변경: import 오류 없이 `uvicorn app.main:app`이 뜨는지 확인합니다.
 - 인증/DB 변경: `database/` SQL과 백엔드 모델/쿼리가 서로 맞는지 확인합니다.
 - DWMS 변경: PostgreSQL 11 전체 dry-run, 실제 적용, `--verify-only`, 핵심 원장/통관/정산 롤백 스모크 테스트를 순서대로 완료합니다.
+- DEIMS 변경: PostgreSQL 11 전체 dry-run, 실제 적용, `--verify-only`, 수입/수출·통관·원산지·컴플라이언스·정산 핵심 무결성 스모크 테스트를 순서대로 완료합니다.
+- DOMS 변경: PostgreSQL 11 전체 dry-run, 실제 적용, `--verify-only`, 교차 tenant·주문·예약·결제·이행·반품·법적보류·복식분개 롤백 스모크 테스트를 순서대로 완료합니다.
+- ETMS 변경: PostgreSQL 11 전체 dry-run과 pending-forward smoke(빈 스키마면 baseline smoke), 실제 적용, `--verify-only`, 카탈로그 감사, 로그인 context·교차 tenant·계획 revision·주문배분·용량/배정/배차·POD·원장·정산·복식분개 rollback smoke를 순서대로 완료합니다.
 - API 주소나 실행 방식 변경: `README.md`와 이 파일을 함께 갱신합니다.
 - 비밀값, 로컬 경로, 개인 토큰이 diff에 포함되지 않았는지 확인합니다.
 - 완료 보고 전: 반드시 `https://www.kang.ai.kr`에 배포합니다.

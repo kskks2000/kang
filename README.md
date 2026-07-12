@@ -8,7 +8,7 @@ Kang은 Flutter 프론트엔드와 FastAPI 백엔드, PostgreSQL, Firebase Auth�
 
 - `frontend/`: Flutter 앱. 로그인, 회원가입, 아이디 찾기, 비밀번호 재설정, 로그인 후 홈 화면을 제공합니다.
 - `backend/`: FastAPI 서버. Firebase ID 토큰을 검증하고 사용자 정보와 외부 데이터 API를 처리합니다.
-- `database/`: 로그인/인증, Google OAuth, Drive 연동 SQL과 PostgreSQL 11용 엔터프라이즈 WMS 기준 스키마를 포함합니다.
+- `database/`: 로그인/인증, Google OAuth, Drive 연동 SQL과 PostgreSQL 11용 엔터프라이즈 WMS·EIMS·OMS·TMS 기준 스키마를 포함합니다.
 - `firebase.json`: Firebase Hosting과 Python Functions 배포 설정입니다.
 
 ## 주요 기능
@@ -69,6 +69,49 @@ python .\scripts\apply_dwms_schema.py --verify-only
 ```
 
 적용기는 `.env`의 기존 DB 접속값을 사용하고 PostgreSQL 11 및 허용된 운영 DB인지 확인합니다. 비밀번호·토큰·인증서 개인키는 DWMS 테이블에 저장하지 않으며, 별도 런타임 DB 역할은 DBA가 `database/dwms/security_role_template.sql`을 검토한 뒤 구성해야 합니다.
+
+## 엔터프라이즈 수출입물류 EIMS 데이터베이스
+
+`database/deims/`에는 `deims` 스키마의 611개 테이블을 만드는 PostgreSQL 11 기준선이 있습니다. Firebase 이메일/비밀번호·Google 로그인 매핑, 조직·파트너·품목, 수입/수출 업무건과 주문, 국제운송 예약, 관세·UNI-PASS·보세, FTA 원산지, 제재·전략물자·허가, 정산·무역금융, 보험·클레임, 문서·워크플로·감사를 포함합니다. 상세 설계와 운영 전제는 [DEIMS 데이터베이스 안내](database/deims/README.md)를 참고하세요.
+
+```powershell
+cd D:\kcastle\kang
+python .\scripts\apply_deims_schema.py --dry-run
+python .\scripts\apply_deims_schema.py
+python .\scripts\apply_deims_schema.py --verify-only
+```
+
+적용기는 00~12 모듈을 한 트랜잭션에서 실행하고 SQL·카탈로그·기준 시드 체크섬, FK/CHECK/트리거, RLS/FORCE RLS, Firebase 주체 매핑과 비밀값 금지 규칙을 검증합니다. 애플리케이션 런타임 역할은 `database/deims/security_role_template.sql`을 DBA가 검토한 뒤 별도로 생성해야 합니다.
+
+## 엔터프라이즈 오더관리 DOMS 데이터베이스
+
+`database/doms/`에는 `doms` 스키마의 433개 테이블을 만드는 PostgreSQL 11 기준선이 있습니다. Firebase 이메일/비밀번호·Google 로그인과 보호된 세션/RLS 컨텍스트, 고객·채널·가격·프로모션, 다채널 주문, ATP·예약·할당, 결제·세금·부정탐지, 분할출고·배송, 반품·RMA·교환·보증, 조달·드롭십, 청구·채널정산·복식분개, 워크플로·통합·감사·개인정보 처리를 포함합니다. 상세 설계와 운영 전제는 [DOMS 데이터베이스 안내](database/doms/README.md)를 참고하세요.
+
+```powershell
+cd D:\kcastle\kang
+python .\scripts\apply_doms_schema.py --dry-run
+python .\scripts\apply_doms_schema.py
+python .\scripts\apply_doms_schema.py --verify-only
+python .\scripts\smoke_test_doms_schema.py
+```
+
+적용기는 00~10 모듈을 한 트랜잭션에서 실행하고 SQL·카탈로그·기준 시드 체크섬, 모든 tenant 테이블의 RLS/FORCE RLS, 세션에 결합된 요청 컨텍스트, 동일 tenant FK, append-only, JSONB·암호문·secret reference 규칙, Firebase 주체와 결제·재고·반품·회계 핵심 무결성을 검증합니다. 런타임 역할은 `database/doms/security_role_template.sql`을 CREATEROLE 권한이 있는 DBA가 검토한 뒤 별도로 생성해야 합니다.
+
+## 엔터프라이즈 운송관리 ETMS 데이터베이스
+
+`database/etms/`에는 PostgreSQL 11용 `etms` 기준선 480개와 순방향 보완 13개를 합친 493개 테이블이 있습니다. 보호된 Firebase 세션과 tenant context, 조직·파트너·거점·차량·기사 마스터, 운송주문, 편성·합배송·배정·배차, 도로·해상·항공·철도·택배 실행과 관제/POD, 계약·tariff·운임, 실적·탄소·클레임, 매입/매출 청구·세금계산서·정산·복식분개, 규제·제재·개인정보·연계·SCD 분석을 포함합니다. 상세 설계는 [ETMS 데이터베이스 안내](database/etms/README.md)와 [ETMS 설계 문서](docs/etms_database_design.md)를 참고하세요.
+
+```powershell
+cd D:\kcastle\kang
+python .\scripts\apply_etms_schema.py --dry-run
+python .\scripts\smoke_test_etms_schema.py --with-pending-forward-dry-run
+python .\scripts\apply_etms_schema.py
+python .\scripts\apply_etms_schema.py --verify-only
+python .\scripts\audit_etms_schema.py
+python .\scripts\smoke_test_etms_schema.py
+```
+
+적용기는 immutable 00~11 기준선과 allowlist 순방향 이력을 검증하고 SQL·카탈로그·기준 시드 지문, 2,706개 FK, 1,091개 CHECK, tenant 테이블 474개의 RLS/FORCE RLS, 동일 tenant 참조, 로그인 전용 세션 context, 계획 revision·주문배분·기간 overlap·중량/부피/팔레트 capacity·tender/배정/배차, append-only UPDATE/DELETE/TRUNCATE, JSONB 비밀값·암호문·secret reference와 claim/COD·정산·기준통화 복식분개 무결성을 검증합니다. 운영 런타임 역할은 `database/etms/security_role_template.sql`을 권한 있는 DBA가 검토한 뒤 최소 권한으로 별도 생성해야 합니다.
 
 ## 프론트엔드 실행
 

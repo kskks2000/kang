@@ -1,0 +1,436 @@
+-- ETMS transportation demand, order revisions, stops, cargo lines, and handling units.
+
+CREATE TABLE IF NOT EXISTS etms.party_snapshots (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    partner_id uuid REFERENCES etms.business_partners(id),
+    partner_code varchar(80),
+    partner_name varchar(300) NOT NULL,
+    legal_name varchar(300),
+    business_registration_no varchar(50),
+    tax_registration_no varchar(80),
+    country_code char(2),
+    snapshot_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+    captured_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS etms.address_snapshots (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    address_id uuid REFERENCES etms.addresses(id),
+    country_code char(2) NOT NULL,
+    postal_code varchar(30),
+    region varchar(150),
+    city varchar(150),
+    district varchar(150),
+    line1 varchar(300) NOT NULL,
+    line2 varchar(300),
+    latitude numeric(10,7),
+    longitude numeric(11,7),
+    timezone varchar(100),
+    standardized_address text,
+    captured_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS etms.transport_orders (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_no varchar(100) NOT NULL,
+    current_revision_no integer NOT NULL DEFAULT 1,
+    order_type varchar(30) NOT NULL DEFAULT 'OUTBOUND',
+    source_system_id uuid REFERENCES etms.external_systems(id),
+    source_order_id varchar(200),
+    organization_id uuid NOT NULL REFERENCES etms.organizations(id),
+    org_unit_id uuid REFERENCES etms.organization_units(id),
+    cost_center_id uuid REFERENCES etms.cost_centers(id),
+    customer_id uuid NOT NULL REFERENCES etms.business_partners(id),
+    bill_to_partner_id uuid REFERENCES etms.business_partners(id),
+    quote_id uuid REFERENCES etms.rate_quotes(id),
+    parent_order_id uuid REFERENCES etms.transport_orders(id),
+    return_of_order_id uuid REFERENCES etms.transport_orders(id),
+    mode_code varchar(20) REFERENCES etms.transport_modes(mode_code),
+    service_level_id uuid REFERENCES etms.service_levels(id),
+    priority integer NOT NULL DEFAULT 100,
+    requested_pickup_from timestamptz,
+    requested_pickup_to timestamptz,
+    requested_delivery_from timestamptz,
+    requested_delivery_to timestamptz,
+    customer_reference varchar(200),
+    purchase_order_no varchar(200),
+    sales_order_no varchar(200),
+    incoterm_code varchar(10),
+    incoterm_location varchar(200),
+    total_quantity numeric(20,6) NOT NULL DEFAULT 0,
+    quantity_uom_code varchar(20) REFERENCES etms.units_of_measure(uom_code),
+    total_weight_kg numeric(20,6) NOT NULL DEFAULT 0,
+    total_volume_m3 numeric(20,6) NOT NULL DEFAULT 0,
+    total_pallets numeric(20,3) NOT NULL DEFAULT 0,
+    declared_value numeric(20,4),
+    currency_code char(3) REFERENCES etms.currencies(currency_code),
+    temperature_controlled boolean NOT NULL DEFAULT false,
+    dangerous_goods boolean NOT NULL DEFAULT false,
+    stackable boolean NOT NULL DEFAULT true,
+    status varchar(30) NOT NULL DEFAULT 'DRAFT',
+    hold_status varchar(20) NOT NULL DEFAULT 'NONE',
+    planning_status varchar(20) NOT NULL DEFAULT 'UNPLANNED',
+    execution_status varchar(20) NOT NULL DEFAULT 'NOT_STARTED',
+    billing_status varchar(20) NOT NULL DEFAULT 'NOT_RATED',
+    submitted_at timestamptz,
+    cancelled_at timestamptz,
+    cancel_reason text,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    row_version bigint NOT NULL DEFAULT 1,
+    created_by uuid REFERENCES etms.users(id),
+    updated_by uuid REFERENCES etms.users(id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    deleted_at timestamptz,
+    UNIQUE (tenant_id, order_no),
+    UNIQUE (tenant_id, source_system_id, source_order_id),
+    CONSTRAINT ck_transport_orders_revision CHECK (current_revision_no > 0),
+    CONSTRAINT ck_transport_orders_type CHECK (order_type IN ('OUTBOUND','INBOUND','TRANSFER','RETURN','REPOSITION','DROP_SHIP','CROSS_TRADE')),
+    CONSTRAINT ck_transport_orders_pickup CHECK (requested_pickup_to IS NULL OR requested_pickup_from IS NULL OR requested_pickup_to >= requested_pickup_from),
+    CONSTRAINT ck_transport_orders_delivery CHECK (requested_delivery_to IS NULL OR requested_delivery_from IS NULL OR requested_delivery_to >= requested_delivery_from),
+    CONSTRAINT ck_transport_orders_quantities CHECK (total_quantity >= 0 AND total_weight_kg >= 0 AND total_volume_m3 >= 0 AND total_pallets >= 0),
+    CONSTRAINT ck_transport_orders_parent CHECK (parent_order_id IS NULL OR parent_order_id <> id),
+    CONSTRAINT ck_transport_orders_return CHECK (return_of_order_id IS NULL OR return_of_order_id <> id)
+);
+
+CREATE TABLE IF NOT EXISTS etms.transport_order_revisions (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    revision_no integer NOT NULL,
+    change_type varchar(30) NOT NULL,
+    change_reason text,
+    snapshot jsonb NOT NULL,
+    requested_by uuid REFERENCES etms.users(id),
+    approved_by uuid REFERENCES etms.users(id),
+    effective_at timestamptz NOT NULL DEFAULT now(),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (order_id, revision_no),
+    CONSTRAINT ck_order_revisions_no CHECK (revision_no > 0),
+    CONSTRAINT ck_order_revisions_type CHECK (change_type IN ('CREATE','CUSTOMER_CHANGE','OPERATIONAL_CHANGE','CANCEL','REOPEN','SYSTEM_CORRECTION'))
+);
+
+CREATE TABLE IF NOT EXISTS etms.transport_order_parties (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    party_role varchar(30) NOT NULL,
+    partner_id uuid REFERENCES etms.business_partners(id),
+    party_snapshot_id uuid NOT NULL REFERENCES etms.party_snapshots(id),
+    address_snapshot_id uuid REFERENCES etms.address_snapshots(id),
+    contact_name varchar(200),
+    contact_email varchar(320),
+    contact_phone_encrypted text,
+    is_primary boolean NOT NULL DEFAULT false,
+    instructions text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (order_id, party_role, partner_id),
+    CONSTRAINT ck_order_parties_role CHECK (party_role IN ('CUSTOMER','SHIPPER','CONSIGNEE','PICKUP','DELIVERY','BILL_TO','NOTIFY','BROKER','CUSTOMS_BROKER','ULTIMATE_CONSIGNEE'))
+);
+
+CREATE TABLE IF NOT EXISTS etms.transport_order_references (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    reference_type varchar(50) NOT NULL,
+    reference_value varchar(300) NOT NULL,
+    issuer_partner_id uuid REFERENCES etms.business_partners(id),
+    is_primary boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (order_id, reference_type, reference_value)
+);
+
+CREATE TABLE IF NOT EXISTS etms.transport_order_stops (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    sequence_no integer NOT NULL,
+    stop_type varchar(30) NOT NULL,
+    location_id uuid REFERENCES etms.locations(id),
+    address_snapshot_id uuid NOT NULL REFERENCES etms.address_snapshots(id),
+    party_snapshot_id uuid REFERENCES etms.party_snapshots(id),
+    contact_name varchar(200),
+    contact_phone_encrypted text,
+    requested_arrival_from timestamptz,
+    requested_arrival_to timestamptz,
+    requested_departure_from timestamptz,
+    requested_departure_to timestamptz,
+    service_duration_minutes integer NOT NULL DEFAULT 0,
+    appointment_required boolean NOT NULL DEFAULT false,
+    appointment_reference varchar(150),
+    pickup_delivery_no varchar(150),
+    instructions text,
+    latitude numeric(10,7),
+    longitude numeric(11,7),
+    timezone varchar(100) NOT NULL DEFAULT 'Asia/Seoul',
+    status varchar(20) NOT NULL DEFAULT 'PENDING',
+    row_version bigint NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (order_id, sequence_no),
+    CONSTRAINT ck_order_stops_sequence CHECK (sequence_no > 0),
+    CONSTRAINT ck_order_stops_type CHECK (stop_type IN ('PICKUP','DELIVERY','CROSS_DOCK','RELAY','PORT','AIRPORT','RAIL_TERMINAL','BORDER','INSPECTION','RETURN','OTHER')),
+    CONSTRAINT ck_order_stops_arrival CHECK (requested_arrival_to IS NULL OR requested_arrival_from IS NULL OR requested_arrival_to >= requested_arrival_from),
+    CONSTRAINT ck_order_stops_departure CHECK (requested_departure_to IS NULL OR requested_departure_from IS NULL OR requested_departure_to >= requested_departure_from),
+    CONSTRAINT ck_order_stops_duration CHECK (service_duration_minutes >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS etms.order_stop_time_windows (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    order_stop_id uuid NOT NULL REFERENCES etms.transport_order_stops(id) ON DELETE CASCADE,
+    window_no integer NOT NULL,
+    window_type varchar(20) NOT NULL DEFAULT 'HARD',
+    starts_at timestamptz NOT NULL,
+    ends_at timestamptz NOT NULL,
+    penalty_per_minute numeric(20,4),
+    penalty_currency_code char(3) REFERENCES etms.currencies(currency_code),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (order_stop_id, window_no),
+    CONSTRAINT ck_stop_windows_dates CHECK (ends_at >= starts_at),
+    CONSTRAINT ck_stop_windows_type CHECK (window_type IN ('HARD','SOFT','PREFERRED')),
+    CONSTRAINT ck_stop_windows_penalty CHECK (penalty_per_minute IS NULL OR penalty_per_minute >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS etms.transport_order_lines (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    line_no integer NOT NULL,
+    item_id uuid REFERENCES etms.items(id),
+    customer_item_code varchar(100),
+    item_description varchar(500) NOT NULL,
+    commodity_class_id uuid REFERENCES etms.commodity_classes(id),
+    hs_code varchar(20),
+    lot_no varchar(100),
+    serial_no varchar(150),
+    country_of_origin char(2) REFERENCES etms.countries(country_code),
+    quantity numeric(20,6) NOT NULL,
+    quantity_uom_code varchar(20) NOT NULL REFERENCES etms.units_of_measure(uom_code),
+    package_count numeric(20,6) NOT NULL DEFAULT 0,
+    package_uom_code varchar(20) REFERENCES etms.units_of_measure(uom_code),
+    gross_weight_kg numeric(20,6) NOT NULL DEFAULT 0,
+    net_weight_kg numeric(20,6),
+    volume_m3 numeric(20,6) NOT NULL DEFAULT 0,
+    length_m numeric(12,6),
+    width_m numeric(12,6),
+    height_m numeric(12,6),
+    declared_value numeric(20,4),
+    currency_code char(3) REFERENCES etms.currencies(currency_code),
+    pickup_stop_id uuid REFERENCES etms.transport_order_stops(id),
+    delivery_stop_id uuid REFERENCES etms.transport_order_stops(id),
+    dangerous_goods boolean NOT NULL DEFAULT false,
+    temperature_controlled boolean NOT NULL DEFAULT false,
+    stackable boolean NOT NULL DEFAULT true,
+    status varchar(20) NOT NULL DEFAULT 'OPEN',
+    attributes jsonb NOT NULL DEFAULT '{}'::jsonb,
+    row_version bigint NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (order_id, line_no),
+    CONSTRAINT ck_order_lines_no CHECK (line_no > 0),
+    CONSTRAINT ck_order_lines_quantity CHECK (quantity > 0 AND package_count >= 0 AND gross_weight_kg >= 0 AND volume_m3 >= 0),
+    CONSTRAINT ck_order_lines_stops CHECK (pickup_stop_id IS NULL OR delivery_stop_id IS NULL OR pickup_stop_id <> delivery_stop_id)
+);
+
+CREATE TABLE IF NOT EXISTS etms.order_line_requirements (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    order_line_id uuid NOT NULL REFERENCES etms.transport_order_lines(id) ON DELETE CASCADE,
+    requirement_type varchar(50) NOT NULL,
+    value_text text,
+    min_value numeric(20,6),
+    max_value numeric(20,6),
+    uom_code varchar(20) REFERENCES etms.units_of_measure(uom_code),
+    is_mandatory boolean NOT NULL DEFAULT true,
+    evidence_required boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (order_line_id, requirement_type),
+    CONSTRAINT ck_order_line_requirement_range CHECK (max_value IS NULL OR min_value IS NULL OR max_value >= min_value)
+);
+
+CREATE TABLE IF NOT EXISTS etms.order_stop_lines (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    order_stop_id uuid NOT NULL REFERENCES etms.transport_order_stops(id) ON DELETE CASCADE,
+    order_line_id uuid NOT NULL REFERENCES etms.transport_order_lines(id) ON DELETE CASCADE,
+    activity_type varchar(20) NOT NULL,
+    planned_quantity numeric(20,6) NOT NULL,
+    actual_quantity numeric(20,6),
+    uom_code varchar(20) NOT NULL REFERENCES etms.units_of_measure(uom_code),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (order_stop_id, order_line_id, activity_type),
+    CONSTRAINT ck_order_stop_lines_activity CHECK (activity_type IN ('LOAD','UNLOAD','INSPECT','TRANSFER','RETURN')),
+    CONSTRAINT ck_order_stop_lines_qty CHECK (planned_quantity >= 0 AND (actual_quantity IS NULL OR actual_quantity >= 0))
+);
+
+CREATE TABLE IF NOT EXISTS etms.order_services (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    order_stop_id uuid REFERENCES etms.transport_order_stops(id) ON DELETE CASCADE,
+    service_code varchar(80) NOT NULL,
+    description text,
+    required boolean NOT NULL DEFAULT true,
+    customer_requested boolean NOT NULL DEFAULT true,
+    approval_status varchar(20) NOT NULL DEFAULT 'NOT_REQUIRED',
+    planned_quantity numeric(20,6),
+    actual_quantity numeric(20,6),
+    uom_code varchar(20) REFERENCES etms.units_of_measure(uom_code),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_order_services_scope
+    ON etms.order_services (
+        order_id,
+        COALESCE(order_stop_id, '00000000-0000-0000-0000-000000000000'::uuid),
+        service_code
+    );
+
+CREATE TABLE IF NOT EXISTS etms.order_constraints (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    constraint_type varchar(50) NOT NULL,
+    constraint_scope varchar(30) NOT NULL DEFAULT 'ORDER',
+    scope_id uuid,
+    severity varchar(10) NOT NULL DEFAULT 'HARD',
+    parameters jsonb NOT NULL DEFAULT '{}'::jsonb,
+    description text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_order_constraints_severity CHECK (severity IN ('HARD','SOFT','INFO'))
+);
+
+CREATE TABLE IF NOT EXISTS etms.handling_units (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    parent_handling_unit_id uuid REFERENCES etms.handling_units(id),
+    handling_unit_no varchar(100) NOT NULL,
+    sscc varchar(30),
+    handling_unit_type varchar(30) NOT NULL,
+    packaging_code varchar(50),
+    quantity numeric(20,6) NOT NULL DEFAULT 1,
+    gross_weight_kg numeric(20,6) NOT NULL DEFAULT 0,
+    net_weight_kg numeric(20,6),
+    volume_m3 numeric(20,6) NOT NULL DEFAULT 0,
+    length_m numeric(12,6),
+    width_m numeric(12,6),
+    height_m numeric(12,6),
+    seal_required boolean NOT NULL DEFAULT false,
+    stackable boolean NOT NULL DEFAULT true,
+    status varchar(20) NOT NULL DEFAULT 'PLANNED',
+    current_location_id uuid REFERENCES etms.locations(id),
+    row_version bigint NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, handling_unit_no),
+    UNIQUE (tenant_id, sscc),
+    CONSTRAINT ck_handling_units_parent CHECK (parent_handling_unit_id IS NULL OR parent_handling_unit_id <> id),
+    CONSTRAINT ck_handling_units_values CHECK (quantity > 0 AND gross_weight_kg >= 0 AND volume_m3 >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS etms.handling_unit_contents (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    handling_unit_id uuid NOT NULL REFERENCES etms.handling_units(id) ON DELETE CASCADE,
+    order_line_id uuid NOT NULL REFERENCES etms.transport_order_lines(id),
+    quantity numeric(20,6) NOT NULL,
+    uom_code varchar(20) NOT NULL REFERENCES etms.units_of_measure(uom_code),
+    lot_no varchar(100),
+    serial_no varchar(150),
+    expiry_date date,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (handling_unit_id, order_line_id, lot_no, serial_no),
+    CONSTRAINT ck_handling_unit_contents_qty CHECK (quantity > 0)
+);
+
+CREATE TABLE IF NOT EXISTS etms.returnable_assets (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    asset_no varchar(100) NOT NULL,
+    asset_type varchar(50) NOT NULL,
+    owner_partner_id uuid REFERENCES etms.business_partners(id),
+    serial_no varchar(150),
+    current_partner_id uuid REFERENCES etms.business_partners(id),
+    current_location_id uuid REFERENCES etms.locations(id),
+    status varchar(20) NOT NULL DEFAULT 'AVAILABLE',
+    purchase_date date,
+    replacement_value numeric(20,4),
+    currency_code char(3) REFERENCES etms.currencies(currency_code),
+    row_version bigint NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, asset_no)
+);
+
+CREATE TABLE IF NOT EXISTS etms.returnable_asset_movements (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    asset_id uuid NOT NULL REFERENCES etms.returnable_assets(id),
+    order_id uuid REFERENCES etms.transport_orders(id),
+    from_partner_id uuid REFERENCES etms.business_partners(id),
+    to_partner_id uuid REFERENCES etms.business_partners(id),
+    from_location_id uuid REFERENCES etms.locations(id),
+    to_location_id uuid REFERENCES etms.locations(id),
+    movement_type varchar(30) NOT NULL,
+    occurred_at timestamptz NOT NULL,
+    evidence_file_id uuid REFERENCES etms.files(id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_returnable_movement_party CHECK (from_partner_id IS NOT NULL OR from_location_id IS NOT NULL),
+    CONSTRAINT ck_returnable_movement_destination CHECK (to_partner_id IS NOT NULL OR to_location_id IS NOT NULL)
+);
+
+CREATE TABLE IF NOT EXISTS etms.order_holds (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    hold_type varchar(50) NOT NULL,
+    severity varchar(20) NOT NULL DEFAULT 'BLOCKING',
+    reason text NOT NULL,
+    placed_by uuid REFERENCES etms.users(id),
+    placed_at timestamptz NOT NULL DEFAULT now(),
+    released_by uuid REFERENCES etms.users(id),
+    released_at timestamptz,
+    release_reason text,
+    CONSTRAINT ck_order_holds_severity CHECK (severity IN ('BLOCKING','WARNING')),
+    CONSTRAINT ck_order_holds_release CHECK (released_at IS NULL OR released_at >= placed_at)
+);
+
+CREATE TABLE IF NOT EXISTS etms.order_status_history (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    from_status varchar(30),
+    to_status varchar(30) NOT NULL,
+    reason_code varchar(80),
+    reason_text text,
+    source_type varchar(30) NOT NULL DEFAULT 'USER',
+    source_event_id uuid,
+    changed_by uuid REFERENCES etms.users(id),
+    occurred_at timestamptz NOT NULL DEFAULT now(),
+    received_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS etms.order_change_requests (
+    id uuid PRIMARY KEY DEFAULT etms.generate_uuid(),
+    tenant_id uuid NOT NULL REFERENCES etms.tenants(id),
+    order_id uuid NOT NULL REFERENCES etms.transport_orders(id) ON DELETE CASCADE,
+    request_no varchar(100) NOT NULL,
+    requested_revision_no integer NOT NULL,
+    change_type varchar(50) NOT NULL,
+    requested_changes jsonb NOT NULL,
+    operational_impact jsonb NOT NULL DEFAULT '{}'::jsonb,
+    cost_impact_amount numeric(20,4),
+    currency_code char(3) REFERENCES etms.currencies(currency_code),
+    status varchar(20) NOT NULL DEFAULT 'REQUESTED',
+    requested_by uuid REFERENCES etms.users(id),
+    requested_at timestamptz NOT NULL DEFAULT now(),
+    decided_by uuid REFERENCES etms.users(id),
+    decided_at timestamptz,
+    decision_reason text,
+    row_version bigint NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, request_no),
+    CONSTRAINT ck_order_change_revision CHECK (requested_revision_no > 0),
+    CONSTRAINT ck_order_change_status CHECK (status IN ('REQUESTED','IMPACT_ANALYSIS','APPROVED','REJECTED','APPLIED','CANCELLED'))
+);
