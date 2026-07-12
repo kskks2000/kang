@@ -22,6 +22,8 @@
 - `backend/app/settings.py`: 환경값 로딩과 DB 연결 제한을 담당합니다.
 - `backend/app/schemas.py`: API 요청/응답 모델입니다.
 - `database/`: 운영 DB 스키마와 마이그레이션 SQL입니다.
+- `database/dwms/`: PostgreSQL 11용 엔터프라이즈 WMS `dwms` 기준선입니다. 구조와 운영 전제는 `database/dwms/README.md`에 있습니다.
+- `scripts/apply_dwms_schema.py`: 00~11 DWMS 모듈을 원자적으로 적용하고 카탈로그·RLS·무결성 보호를 검증합니다.
 - `docs/stock_trading_dashboard_status.md`: 주식 거래 대시보드의 완료 항목, 구현 메모, 다음 작업 전 확인 사항입니다. 주식 거래 화면을 수정하기 전 반드시 먼저 읽습니다.
 
 ## 중요한 계약
@@ -38,6 +40,7 @@
 - 토스증권 Open API 주문 생성, 정정, 취소는 사용자가 명시적으로 요청한 경우에만 연결합니다. 실제 주문 전송은 Firebase 인증, `TOSSINVEST_TRADING_ENABLED=true`, `TOSSINVEST_TRADING_ALLOWED_EMAILS` 허용 목록, 프론트엔드 최종 확인 모달 또는 정정/취소 확인창을 모두 거쳐야 합니다.
 - `TOSSINVEST_CLIENT_ID`, `TOSSINVEST_CLIENT_SECRET`, `TOSSINVEST_ACCOUNT`, `TOSSINVEST_TRADING_ALLOWED_EMAILS`는 비밀값 또는 개인정보로 취급하고 로그, 문서, diff에 실제 값을 노출하지 마세요.
 - 운영 서버의 공인 IP가 토스증권 Open API 콘솔 허용 IP에 등록되어 있어야 합니다. 운영 확인 중 `IP address not allowed`가 나오면 코드보다 토스 콘솔 IP 허용 목록을 먼저 확인하세요.
+- DWMS 기준선 변경 전에는 `database/dwms/README.md`를 먼저 읽고, 변경 후 `python scripts/apply_dwms_schema.py --dry-run`과 `--verify-only`를 실행합니다. 운영 배포 후 00~11 기준 파일은 체크섬이 잠긴 것으로 보고 직접 고치지 말고 새 forward-only 마이그레이션을 추가합니다.
 
 ## 주식 거래 대시보드 작업 전 확인
 
@@ -104,6 +107,7 @@ Invoke-WebRequest -Uri https://www.kang.ai.kr/health -UseBasicParsing
 - 프론트엔드 변경: `flutter analyze`와 `flutter test`를 실행합니다.
 - 백엔드 변경: import 오류 없이 `uvicorn app.main:app`이 뜨는지 확인합니다.
 - 인증/DB 변경: `database/` SQL과 백엔드 모델/쿼리가 서로 맞는지 확인합니다.
+- DWMS 변경: PostgreSQL 11 전체 dry-run, 실제 적용, `--verify-only`, 핵심 원장/통관/정산 롤백 스모크 테스트를 순서대로 완료합니다.
 - API 주소나 실행 방식 변경: `README.md`와 이 파일을 함께 갱신합니다.
 - 비밀값, 로컬 경로, 개인 토큰이 diff에 포함되지 않았는지 확인합니다.
 - 완료 보고 전: 반드시 `https://www.kang.ai.kr`에 배포합니다.
