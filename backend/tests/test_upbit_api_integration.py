@@ -60,6 +60,7 @@ class UpbitApiIntegrationTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("cache-control"), "no-store")
         self.assertEqual(response.json()["status"], "validated")
         service.assert_called_once()
         self.assertEqual(service.call_args.kwargs["user_email"], "trader@example.com")

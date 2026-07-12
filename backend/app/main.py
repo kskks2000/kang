@@ -88,6 +88,14 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def no_store_private_trading_api(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/upbit/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 def _client_ip(request: Request) -> Optional[str]:
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:

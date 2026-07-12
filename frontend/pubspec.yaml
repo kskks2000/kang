@@ -65,6 +65,7 @@ flutter:
   assets:
     - assets/images/
     - assets/stock_logos/
+    - assets/crypto_logos/
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 

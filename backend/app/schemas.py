@@ -404,6 +404,8 @@ class TossInvestHolding(BaseModel):
     marketCountry: str
     currency: str
     quantity: str
+    availableQuantity: Optional[str] = None
+    lockedQuantity: Optional[str] = None
     lastPrice: str
     averagePurchasePrice: str
     marketValue: str

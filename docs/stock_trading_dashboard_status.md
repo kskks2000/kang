@@ -26,12 +26,17 @@
 10. 종목 아이콘이 흐릿해 보이는 문제를 줄이기 위해 주요 종목은 선명한 브랜드 컬러 기반 심볼 마크로 렌더링하도록 변경했습니다.
 11. 주식 거래 대시보드의 주요 패널 구분선을 드래그해서 너비와 높이를 조정할 수 있도록 변경했습니다. 좌측 메인 영역과 우측 주문 영역 사이의 너비, 관심종목/차트 사이의 높이, 주문/체결·잔고 사이의 높이를 조정할 수 있으며, 구분선을 더블클릭하면 기본 비율로 되돌립니다.
 12. 국내/해외 주식 옆에 코인 탭을 추가하고 업비트 KRW 마켓 시세, 호가, 잔고, 미체결/체결, 주문 생성/취소 흐름을 연결했습니다. 코인 실주문은 최종 확인 후 `/v1/orders/test` 검증을 통과한 경우에만 `/v1/orders`로 전송합니다. 백엔드 실주문 라우트도 주문 테스트를 다시 강제하므로 프론트 우회 호출도 테스트 없이 실주문으로 이어지지 않습니다.
+13. 코인 기본 관심목록에 `KRW-USDT` 테더를 추가하고, 코인 주문 전 `/v1/orders/chance`로 마켓 지원 여부, 최소 주문 금액, 주문가능 잔고를 먼저 확인하도록 보강했습니다. `USDT`만 입력해도 백엔드에서 `KRW-USDT`로 정규화됩니다.
+14. 코인 주문 패널의 주문가능 표시를 매수/매도 방향에 맞게 분리했습니다. 매수는 주문가능 KRW를 원화 단위로 표시하고, 매도는 업비트 `balance` 기준의 매도 가능 코인 수량을 표시합니다. `locked` 수량은 별도 필드로 분리해 매도 가능 수량에 섞지 않습니다.
+15. 상단 국내/해외/코인 시장 선택 카드에서 현재 선택된 시장은 해당 시장 색의 연한 배경, 테두리, 아이콘 색으로 강조합니다. 코인 선택 시 우측 상단 코인 카드에 주황 계열 음영이 들어갑니다.
+16. 코인 목록의 글자형 배지를 실제 코인 로고 이미지 자산으로 교체했습니다. `assets/crypto_logos/`에 BTC, USDT, ETH, XRP, SOL, DOGE, ADA, AVAX, LINK 로고를 두고 업비트 심볼의 base asset을 기준으로 자동 매핑합니다.
 
 ## 관련 코드
 
 - `frontend/lib/screens/home_screen.dart`
   - 주식 거래 전체 화면, watchlist, 차트, 주문 패널, 체결/잔고 패널, 종목 아이콘 렌더링이 포함되어 있습니다.
   - `_StockTradingSymbolAvatar`, `_StockTradingPremiumSymbolAvatar`, `_stockBrandMarkSpecs`는 종목 아이콘 표시를 담당합니다.
+  - `_stockCryptoLogoAssets`는 업비트 코인 심볼과 `assets/crypto_logos/`의 실제 코인 로고 이미지 매핑을 담당합니다.
   - `_StockTradingResizableVerticalSplit`, `_StockTradingResizeHandle`은 주식 대시보드 패널 크기 조절 구분선을 담당합니다.
   - `_StockTradingWatchlistPanelState`는 검색 결과와 daily change fallback을 관리합니다.
   - `_quoteCache`, `_currentMarketQuotes`, `_activeQuote`는 종목 선택 시 가격이 사라지지 않게 유지하는 데 중요합니다.
@@ -44,7 +49,7 @@
 - `backend/app/schemas.py`
   - 토스 주식과 업비트 코인 API 요청/응답 스키마가 있습니다.
 - `backend/tests/test_upbit_service.py`
-  - 업비트 주문 payload, 권한 게이트, 주문 테스트 API, 실제 주문 API path를 mock 기반으로 검증합니다.
+  - 업비트 주문 payload, 권한 게이트, 주문가능정보 API, 주문 테스트 API, 실제 주문 API path를 mock 기반으로 검증합니다.
 
 ## 검증 기준
 

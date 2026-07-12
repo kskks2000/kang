@@ -1036,6 +1036,8 @@ class TossHolding {
     required this.marketCountry,
     required this.currency,
     required this.quantity,
+    required this.availableQuantity,
+    required this.lockedQuantity,
     required this.lastPrice,
     required this.averagePurchasePrice,
     required this.marketValue,
@@ -1048,6 +1050,8 @@ class TossHolding {
   final String marketCountry;
   final String currency;
   final String quantity;
+  final String availableQuantity;
+  final String lockedQuantity;
   final String lastPrice;
   final String averagePurchasePrice;
   final String marketValue;
@@ -1061,6 +1065,11 @@ class TossHolding {
       marketCountry: json['marketCountry'] as String? ?? '',
       currency: json['currency'] as String? ?? '',
       quantity: json['quantity'] as String? ?? '',
+      availableQuantity:
+          json['availableQuantity'] as String? ??
+          json['quantity'] as String? ??
+          '',
+      lockedQuantity: json['lockedQuantity'] as String? ?? '',
       lastPrice: json['lastPrice'] as String? ?? '',
       averagePurchasePrice: json['averagePurchasePrice'] as String? ?? '',
       marketValue: json['marketValue'] as String? ?? '',

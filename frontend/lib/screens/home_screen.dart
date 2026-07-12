@@ -3019,6 +3019,15 @@ class _StockTradingWatchlistPanelState
           market: 'UPBIT',
         ),
         _StockTradingWatchlistItem(
+          symbol: 'KRW-USDT',
+          name: '테더',
+          price: '조회 중',
+          change: '-',
+          changeValue: 0,
+          marketCap: '-',
+          market: 'UPBIT',
+        ),
+        _StockTradingWatchlistItem(
           symbol: 'KRW-ETH',
           name: '이더리움',
           price: '조회 중',
@@ -3462,7 +3471,7 @@ class _StockTradingAddSymbolDialogState
                 labelText: '종목 코드 / 이름',
                 hintText: switch (widget.config.marketCode) {
                   'KR' => '예: 삼성전자, 005930',
-                  'UPBIT' => '예: 비트코인, BTC, KRW-BTC',
+                  'UPBIT' => '예: 테더, USDT, KRW-USDT',
                   _ => '예: NVIDIA, NVDA',
                 },
                 suffixIcon: _loading
@@ -4767,8 +4776,12 @@ class _StockTradingSymbolAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final trimmedLogoAsset = logoAsset.trim();
     final trimmedLogoUrl = logoUrl.trim();
+    final cryptoLogoAsset = _stockCryptoLogoAssetForSymbol(symbol);
+    final effectiveLogoAsset = trimmedLogoAsset.isNotEmpty
+        ? trimmedLogoAsset
+        : cryptoLogoAsset;
     final brandSpec = _stockBrandMarkSpecFor(symbol, name);
-    if (brandSpec != null) {
+    if (brandSpec != null && effectiveLogoAsset.isEmpty) {
       return _StockTradingPremiumSymbolAvatar(
         spec: brandSpec,
         selected: selected,
@@ -4782,11 +4795,11 @@ class _StockTradingSymbolAvatar extends StatelessWidget {
       color: color,
     );
 
-    if (trimmedLogoAsset.isEmpty && trimmedLogoUrl.isEmpty) {
+    if (effectiveLogoAsset.isEmpty && trimmedLogoUrl.isEmpty) {
       return fallback;
     }
 
-    final image = trimmedLogoAsset.isEmpty
+    final image = effectiveLogoAsset.isEmpty
         ? Image.network(
             trimmedLogoUrl,
             fit: BoxFit.contain,
@@ -4796,7 +4809,7 @@ class _StockTradingSymbolAvatar extends StatelessWidget {
             errorBuilder: (_, _, _) => fallback,
           )
         : Image.asset(
-            trimmedLogoAsset,
+            effectiveLogoAsset,
             fit: BoxFit.contain,
             filterQuality: FilterQuality.high,
             isAntiAlias: true,
@@ -4811,6 +4824,29 @@ class _StockTradingSymbolAvatar extends StatelessWidget {
       child: image,
     );
   }
+}
+
+const Map<String, String> _stockCryptoLogoAssets = {
+  'BTC': 'assets/crypto_logos/btc.png',
+  'USDT': 'assets/crypto_logos/usdt.png',
+  'ETH': 'assets/crypto_logos/eth.png',
+  'XRP': 'assets/crypto_logos/xrp.png',
+  'SOL': 'assets/crypto_logos/sol.png',
+  'DOGE': 'assets/crypto_logos/doge.png',
+  'ADA': 'assets/crypto_logos/ada.png',
+  'AVAX': 'assets/crypto_logos/avax.png',
+  'LINK': 'assets/crypto_logos/link.png',
+};
+
+String _stockCryptoLogoAssetForSymbol(String symbol) {
+  final normalized = symbol.trim().toUpperCase();
+  if (normalized.isEmpty) {
+    return '';
+  }
+  final baseSymbol = normalized.contains('-')
+      ? normalized.split('-').last
+      : normalized;
+  return _stockCryptoLogoAssets[baseSymbol] ?? '';
 }
 
 class _StockTradingLogoAvatarFrame extends StatelessWidget {
@@ -7618,7 +7654,7 @@ class _StockTradingExecutionWorkspace extends StatelessWidget {
   Widget build(BuildContext context) {
     final profile = _StockTradingExecutionProfile.from(
       dashboard,
-      currency: config.badge,
+      config: config,
     );
 
     Widget metricsSurface() {
@@ -8605,16 +8641,17 @@ class _StockTradingExecutionProfile {
 
   factory _StockTradingExecutionProfile.from(
     TossStockDashboard? dashboard, {
-    required String currency,
+    required _StockTradingMarketConfig config,
   }) {
+    final currency = config.badge;
     final holdings = (dashboard?.holdings ?? const <TossHolding>[])
-        .where((item) => _stockMatchesCurrency(item.currency, currency))
+        .where((item) => _stockShouldShowTradingRecord(item.currency, config))
         .toList(growable: false);
     final openOrders = (dashboard?.openOrders ?? const <TossOpenOrder>[])
-        .where((item) => _stockMatchesCurrency(item.currency, currency))
+        .where((item) => _stockShouldShowTradingRecord(item.currency, config))
         .toList(growable: false);
     final executions = (dashboard?.executions ?? const <TossExecution>[])
-        .where((item) => _stockMatchesCurrency(item.currency, currency))
+        .where((item) => _stockShouldShowTradingRecord(item.currency, config))
         .toList(growable: false);
     final summary = dashboard?.summary;
     return _StockTradingExecutionProfile(
@@ -9674,6 +9711,83 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
         _stockCleanOrderInput(_quantityController.text).isNotEmpty;
   }
 
+  String _normalizedOrderSymbol(String symbol) {
+    final normalized = _normalizeStockTradingSymbol(
+      symbol,
+      marketCode: widget.marketCode,
+    );
+    return normalized.isEmpty ? symbol.trim().toUpperCase() : normalized;
+  }
+
+  TossHolding? _holdingForSymbol(String symbol) {
+    final normalized = _normalizedOrderSymbol(symbol);
+    for (final holding in widget.dashboard?.holdings ?? const <TossHolding>[]) {
+      if (holding.symbol.trim().toUpperCase() == normalized) {
+        return holding;
+      }
+    }
+    return null;
+  }
+
+  double? _currentBuyingPowerValue() {
+    final summary = widget.dashboard?.summary;
+    return _stockDoubleValue(
+      widget.config.badge == 'KRW'
+          ? summary?.buyingPowerKrw
+          : summary?.buyingPowerUsd,
+    );
+  }
+
+  double? _availableSellQuantityValue(String symbol) {
+    final holding = _holdingForSymbol(symbol);
+    if (holding == null) {
+      return widget.dashboard == null ? null : 0;
+    }
+    final available = holding.availableQuantity.trim().isNotEmpty
+        ? holding.availableQuantity
+        : holding.quantity;
+    return _stockDoubleValue(available);
+  }
+
+  String _quantityUnitForSymbol(String symbol) {
+    if (widget.config.marketCode == 'UPBIT') {
+      return _stockTradingBaseAsset(_normalizedOrderSymbol(symbol));
+    }
+    return widget.config.quantityUnit;
+  }
+
+  String? _availabilityError({
+    required String symbol,
+    required String price,
+    required String quantity,
+  }) {
+    final priceValue = _stockDoubleValue(price);
+    final quantityValue = _stockDoubleValue(quantity);
+    if (priceValue == null || quantityValue == null) {
+      return null;
+    }
+    if (_selectedSide == 'BUY') {
+      final buyingPower = _currentBuyingPowerValue();
+      final orderAmount = priceValue * quantityValue;
+      if (buyingPower != null && orderAmount > buyingPower + 0.000001) {
+        return '매수 가능 금액은 ${_stockCurrencyAmountLabelValue(buyingPower, widget.config.badge)}입니다.';
+      }
+      return null;
+    }
+
+    final availableQuantity = _availableSellQuantityValue(symbol);
+    if (availableQuantity != null &&
+        quantityValue > availableQuantity + 0.00000001) {
+      final availableLabel = _stockQuantityAmountLabel(
+        availableQuantity,
+        unit: _quantityUnitForSymbol(symbol),
+        allowsFractional: widget.config.allowsFractionalQuantity,
+      );
+      return '매도 가능 수량은 $availableLabel입니다.';
+    }
+    return null;
+  }
+
   Future<void> _confirmAndSubmitOrder() async {
     final symbol = _symbolController.text.trim().toUpperCase();
     final price = _stockCleanOrderInput(_priceController.text);
@@ -9689,11 +9803,30 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
       return;
     }
 
+    final availabilityError = _availabilityError(
+      symbol: symbol,
+      price: price,
+      quantity: quantity,
+    );
+    if (availabilityError != null) {
+      _showOrderSnack(availabilityError, _stockFallColor);
+      return;
+    }
+
     final sideLabel = _selectedSide == 'BUY' ? '매수' : '매도';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         final sideColor = _stockSideColor(_selectedSide);
+        final quantityValue = _stockDoubleValue(quantity);
+        final quantityUnit = _quantityUnitForSymbol(symbol);
+        final quantityLabel = quantityValue == null
+            ? '${_stockFormatNumber(quantity)}$quantityUnit'
+            : _stockQuantityAmountLabel(
+                quantityValue,
+                unit: quantityUnit,
+                allowsFractional: widget.config.allowsFractionalQuantity,
+              );
         return AlertDialog(
           title: Text('실제 $sideLabel 주문 확인'),
           content: Column(
@@ -9713,11 +9846,7 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
                 label: '주문 가격',
                 value: '${_stockFormatNumber(price)} ${widget.config.badge}',
               ),
-              _StockTradingOrderConfirmRow(
-                label: '수량',
-                value:
-                    '${_stockFormatNumber(quantity)}${widget.config.quantityUnit}',
-              ),
+              _StockTradingOrderConfirmRow(label: '수량', value: quantityLabel),
               const SizedBox(height: 10),
               Text(
                 widget.config.usesOrderPreflight
@@ -9825,6 +9954,15 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
     final buyingPower = widget.config.badge == 'KRW'
         ? summary?.buyingPowerKrw
         : summary?.buyingPowerUsd;
+    final normalizedSymbol = _normalizedOrderSymbol(_symbolController.text);
+    final sellQuantity = _availableSellQuantityValue(normalizedSymbol);
+    final orderAvailabilityLine = _selectedSide == 'BUY'
+        ? buyingPower?.trim().isNotEmpty == true
+              ? '매수 가능 ${_stockCurrencyAmountLabel(buyingPower!, widget.config.badge)}'
+              : null
+        : sellQuantity != null
+        ? '매도 가능 ${_stockQuantityAmountLabel(sellQuantity, unit: _quantityUnitForSymbol(normalizedSymbol), allowsFractional: widget.config.allowsFractionalQuantity)}'
+        : null;
     return _StockTradingPanel(
       title: '주문 패널',
       icon: Icons.price_change_outlined,
@@ -9965,7 +10103,7 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
               color: tradingAvailable ? selectedSideColor : KangColors.slate,
             ),
             if ((quote?.lastPrice.trim().isNotEmpty ?? false) ||
-                (buyingPower?.trim().isNotEmpty ?? false) ||
+                (orderAvailabilityLine?.trim().isNotEmpty ?? false) ||
                 tradingNotice.trim().isNotEmpty ||
                 (_orderStatus?.trim().isNotEmpty ?? false)) ...[
               const SizedBox(height: 10),
@@ -9974,8 +10112,8 @@ class _StockTradingOrderPanelState extends State<_StockTradingOrderPanel> {
                 lines: [
                   if (quote?.lastPrice.trim().isNotEmpty ?? false)
                     '현재가 ${_stockFormatNumber(quote!.lastPrice)} ${quote.currency}',
-                  if (buyingPower?.trim().isNotEmpty ?? false)
-                    '매수 가능 ${_stockFormatNumber(buyingPower!)} ${widget.config.badge}',
+                  if (orderAvailabilityLine?.trim().isNotEmpty ?? false)
+                    orderAvailabilityLine!,
                   if (tradingNotice.trim().isNotEmpty) tradingNotice,
                   if (_orderStatus?.trim().isNotEmpty ?? false)
                     _orderStatus!.trim(),
@@ -10185,18 +10323,26 @@ class _StockTradingExecutionPanel extends StatelessWidget {
     final summary = dashboard?.summary;
     final currency = config.badge;
     final holdings = (dashboard?.holdings ?? const <TossHolding>[])
-        .where((item) => _stockMatchesCurrency(item.currency, currency))
+        .where((item) => _stockShouldShowTradingRecord(item.currency, config))
         .toList(growable: false);
     final openOrders = (dashboard?.openOrders ?? const <TossOpenOrder>[])
-        .where((item) => _stockMatchesCurrency(item.currency, currency))
+        .where((item) => _stockShouldShowTradingRecord(item.currency, config))
         .toList(growable: false);
     final executions = (dashboard?.executions ?? const <TossExecution>[])
-        .where((item) => _stockMatchesCurrency(item.currency, currency))
+        .where((item) => _stockShouldShowTradingRecord(item.currency, config))
         .toList(growable: false);
     final buyingPower = currency == 'KRW'
         ? summary?.buyingPowerKrw
         : summary?.buyingPowerUsd;
-    final balanceLabel = buyingPower?.trim().isNotEmpty == true
+    final buyingPowerValue = _stockDoubleValue(buyingPower) ?? 0;
+    final holdingsMarketValue = holdings.fold<double>(
+      0,
+      (sum, item) => sum + (_stockDoubleValue(item.marketValue) ?? 0),
+    );
+    final estimatedAssetValue = holdingsMarketValue + buyingPowerValue;
+    final balanceLabel = config.marketCode == 'UPBIT'
+        ? '${_stockChartValue(estimatedAssetValue)} $currency'
+        : buyingPower?.trim().isNotEmpty == true
         ? '${_stockFormatNumber(buyingPower!)} $currency'
         : loading
         ? '조회 중'
@@ -10207,7 +10353,12 @@ class _StockTradingExecutionPanel extends StatelessWidget {
         : loading
         ? '조회 중'
         : '실시간 데이터';
-    final balanceCaption = holdings.isEmpty
+    final cashCaption = '주문가능 ${_stockChartValue(buyingPowerValue)} $currency';
+    final balanceCaption = config.marketCode == 'UPBIT'
+        ? holdings.isEmpty
+              ? cashCaption
+              : '${holdings.length}코인 · $cashCaption'
+        : holdings.isEmpty
         ? accountLabel
         : '${holdings.length}종목 · $accountLabel';
     final statusText = loading
@@ -10684,6 +10835,39 @@ String _stockCompactNumber(double? value) {
   return _stockFormatNumber(value.toStringAsFixed(0));
 }
 
+String _stockCurrencyAmountLabel(String value, String currency) {
+  final parsed = _stockDoubleValue(value);
+  if (parsed == null) {
+    return '${_stockFormatNumber(value)} $currency';
+  }
+  return _stockCurrencyAmountLabelValue(parsed, currency);
+}
+
+String _stockCurrencyAmountLabelValue(double value, String currency) {
+  final digits = currency == 'KRW' ? 0 : 2;
+  return '${_stockFormatNumber(value.toStringAsFixed(digits))} $currency';
+}
+
+String _stockQuantityAmountLabel(
+  double value, {
+  required String unit,
+  required bool allowsFractional,
+}) {
+  final text = allowsFractional
+      ? _stockTrimDecimal(value, digits: 8)
+      : value.floor().toStringAsFixed(0);
+  final separator = RegExp(r'^[A-Z0-9]{2,12}$').hasMatch(unit) ? ' ' : '';
+  return '${_stockFormatNumber(text)}$separator$unit';
+}
+
+String _stockTradingBaseAsset(String symbol) {
+  final normalized = symbol.trim().toUpperCase();
+  if (normalized.contains('-')) {
+    return normalized.split('-').last;
+  }
+  return normalized.isEmpty ? '코인' : normalized;
+}
+
 String _stockFormatNumber(String value) {
   final normalized = value.replaceAll(',', '').trim();
   if (normalized.isEmpty) {
@@ -10755,6 +10939,16 @@ bool _stockMatchesCurrency(String value, String currency) {
   final normalizedValue = value.trim().toUpperCase();
   final normalizedCurrency = currency.trim().toUpperCase();
   return normalizedValue.isEmpty || normalizedValue == normalizedCurrency;
+}
+
+bool _stockShouldShowTradingRecord(
+  String itemCurrency,
+  _StockTradingMarketConfig config,
+) {
+  if (config.marketCode == 'UPBIT') {
+    return true;
+  }
+  return _stockMatchesCurrency(itemCurrency, config.badge);
 }
 
 String _stockTradingOrderNotice({
@@ -11438,6 +11632,7 @@ class _StockTradingMarketTabs extends StatelessWidget {
             child: _StockTradingMarketTabButton(
               selected: selected == _StockTradingMarket.domestic,
               icon: Icons.account_balance_rounded,
+              activeColor: const Color(0xFF2563EB),
               title: '국내 주식',
               subtitle: 'KRX · KOSPI/KOSDAQ',
               onTap: () => onChanged(_StockTradingMarket.domestic),
@@ -11448,6 +11643,7 @@ class _StockTradingMarketTabs extends StatelessWidget {
             child: _StockTradingMarketTabButton(
               selected: selected == _StockTradingMarket.overseas,
               icon: Icons.public_rounded,
+              activeColor: const Color(0xFF0F766E),
               title: '해외 주식',
               subtitle: 'NASDAQ · NYSE',
               onTap: () => onChanged(_StockTradingMarket.overseas),
@@ -11458,6 +11654,7 @@ class _StockTradingMarketTabs extends StatelessWidget {
             child: _StockTradingMarketTabButton(
               selected: selected == _StockTradingMarket.crypto,
               icon: Icons.currency_bitcoin_rounded,
+              activeColor: const Color(0xFFF59E0B),
               title: '코인',
               subtitle: 'Upbit · KRW',
               onTap: () => onChanged(_StockTradingMarket.crypto),
@@ -11473,6 +11670,7 @@ class _StockTradingMarketTabButton extends StatelessWidget {
   const _StockTradingMarketTabButton({
     required this.selected,
     required this.icon,
+    required this.activeColor,
     required this.title,
     required this.subtitle,
     required this.onTap,
@@ -11480,18 +11678,29 @@ class _StockTradingMarketTabButton extends StatelessWidget {
 
   final bool selected;
   final IconData icon;
+  final Color activeColor;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? KangColors.ink : KangColors.slate;
+    final color = selected ? activeColor : KangColors.slate;
     return Material(
-      color: selected ? Colors.white : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
-      elevation: selected ? 1 : 0,
-      shadowColor: KangColors.ink.withValues(alpha: 0.08),
+      color: selected
+          ? Color.alphaBlend(activeColor.withValues(alpha: 0.10), Colors.white)
+          : Colors.transparent,
+      elevation: selected ? 2 : 0,
+      shadowColor: activeColor.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: selected
+              ? activeColor.withValues(alpha: 0.34)
+              : Colors.transparent,
+          width: 1,
+        ),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
@@ -11701,7 +11910,7 @@ class _StockTradingMarketConfig {
           _StockTradingMarketItem(
             icon: Icons.star_border_rounded,
             title: '관심코인',
-            value: 'BTC · ETH · XRP',
+            value: 'BTC · USDT · ETH',
           ),
           _StockTradingMarketItem(
             icon: Icons.price_change_outlined,

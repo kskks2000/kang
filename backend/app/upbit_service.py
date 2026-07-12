@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 import hashlib
 import re
 from typing import Any, Optional
@@ -23,6 +24,7 @@ UPBIT_CACHE_SECONDS = 30
 UPBIT_MARKET_CODE = "UPBIT"
 UPBIT_DEFAULT_MARKETS = [
     "KRW-BTC",
+    "KRW-USDT",
     "KRW-ETH",
     "KRW-XRP",
     "KRW-SOL",
@@ -57,10 +59,12 @@ def load_upbit_crypto_dashboard(
     dashboard_symbols = _dashboard_symbols(primary_symbol, request_symbols)
     cache_key = f"{quote_currency}:{primary_symbol}:{candle_interval}:{','.join(dashboard_symbols)}"
     now = datetime.now(timezone.utc)
+    private_dashboard = _has_private_keys()
+    private_data_enabled = private_dashboard and _trading_allowed_for_user(user_email)
 
     expires_at = _DASHBOARD_EXPIRES_AT.get(cache_key)
     cached_dashboard = _DASHBOARD_CACHE.get(cache_key)
-    if cached_dashboard and expires_at and expires_at > now:
+    if not private_dashboard and cached_dashboard and expires_at and expires_at > now:
         payload = deepcopy(cached_dashboard)
         payload["cached"] = True
         return payload
@@ -107,7 +111,7 @@ def load_upbit_crypto_dashboard(
     except Exception as exc:  # noqa: BLE001
         errors.append(f"차트: {_safe_error(exc)}")
 
-    if _has_private_keys():
+    if private_data_enabled:
         try:
             account_result = _private_get("/v1/accounts")
             raw_accounts = account_result if isinstance(account_result, list) else []
@@ -155,8 +159,11 @@ def load_upbit_crypto_dashboard(
         buying_power=buying_power,
         errors=errors,
     )
-    _DASHBOARD_CACHE[cache_key] = deepcopy(dashboard)
-    _DASHBOARD_EXPIRES_AT[cache_key] = now + timedelta(seconds=UPBIT_CACHE_SECONDS)
+    if private_dashboard:
+        _clear_dashboard_cache()
+    else:
+        _DASHBOARD_CACHE[cache_key] = deepcopy(dashboard)
+        _DASHBOARD_EXPIRES_AT[cache_key] = now + timedelta(seconds=UPBIT_CACHE_SECONDS)
     dashboard["cached"] = False
     return dashboard
 
@@ -222,6 +229,7 @@ def search_upbit_markets(market: str = "KRW", query: str = "", limit: int = 30) 
 def create_upbit_order(payload: dict[str, Any], *, user_email: str) -> dict[str, Any]:
     _ensure_trading_allowed(user_email)
     order_payload = _order_create_payload(payload)
+    _ensure_order_available(order_payload)
     _private_post("/v1/orders/test", payload=order_payload)
     result = _private_post("/v1/orders", payload=order_payload)
     result = result if isinstance(result, dict) else {}
@@ -237,6 +245,7 @@ def create_upbit_order(payload: dict[str, Any], *, user_email: str) -> dict[str,
 def test_upbit_order(payload: dict[str, Any], *, user_email: str) -> dict[str, Any]:
     _ensure_trading_allowed(user_email)
     order_payload = _order_create_payload(payload)
+    _ensure_order_available(order_payload)
     result = _private_post("/v1/orders/test", payload=order_payload)
     result = result if isinstance(result, dict) else {}
     return _order_submit_response(
@@ -617,10 +626,14 @@ def _holdings(
         symbol = f"{quote_currency}-{asset}"
         ticker = tickers_by_market.get(symbol, {})
         names = market_names.get(symbol, {})
-        quantity = (_safe_float(account.get("balance")) or 0) + (
-            _safe_float(account.get("locked")) or 0
+        available_quantity = _safe_float(account.get("balance")) or 0
+        locked_quantity = _safe_float(account.get("locked")) or 0
+        quantity = available_quantity + locked_quantity
+        last_price = (
+            _safe_float(ticker.get("trade_price"))
+            or _safe_float(account.get("avg_buy_price"))
+            or 0
         )
-        last_price = _safe_float(ticker.get("trade_price")) or _safe_float(account.get("avg_buy_price")) or 0
         avg_price = _safe_float(account.get("avg_buy_price")) or 0
         market_value = quantity * last_price
         cost = quantity * avg_price
@@ -633,6 +646,8 @@ def _holdings(
                 "marketCountry": UPBIT_MARKET_CODE,
                 "currency": quote_currency,
                 "quantity": _decimal_string(quantity),
+                "availableQuantity": _decimal_string(available_quantity),
+                "lockedQuantity": _decimal_string(locked_quantity),
                 "lastPrice": _decimal_string(last_price),
                 "averagePurchasePrice": _decimal_string(avg_price),
                 "marketValue": _decimal_string(market_value),
@@ -777,6 +792,108 @@ def _order_create_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "ord_type": "limit",
         "identifier": _client_order_id(),
     }
+
+
+def _ensure_order_available(order_payload: dict[str, Any]) -> None:
+    market = str(order_payload.get("market") or "")
+    chance = _private_get("/v1/orders/chance", params={"market": market})
+    if not isinstance(chance, dict):
+        raise UpbitApiError("업비트 주문 가능 정보를 확인하지 못했습니다.")
+
+    market_info = chance.get("market")
+    market_info = market_info if isinstance(market_info, dict) else {}
+    side = str(order_payload.get("side") or "")
+    order_amount = _order_amount(order_payload)
+
+    supported_sides = market_info.get("order_sides")
+    if supported_sides and not _contains_text(supported_sides, side):
+        raise ValueError(f"{market} 마켓은 {_ui_side(side)} 주문을 지원하지 않습니다.")
+
+    order_type_key = "bid_types" if side == "bid" else "ask_types"
+    supported_order_types = market_info.get(order_type_key) or market_info.get(
+        "order_types"
+    )
+    if supported_order_types and not _contains_text(supported_order_types, "limit"):
+        raise ValueError(f"{market} 마켓은 지정가 {_ui_side(side)} 주문을 지원하지 않습니다.")
+
+    min_total = _chance_total_limit(market_info, side, "min_total")
+    if min_total is not None and order_amount < min_total:
+        raise ValueError(
+            f"{market} 최소 주문 금액은 {_decimal_label(min_total)} KRW 이상입니다."
+        )
+
+    max_total = _chance_total_limit(market_info, side, "max_total")
+    if max_total is not None and order_amount > max_total:
+        raise ValueError(
+            f"{market} 최대 주문 금액은 {_decimal_label(max_total)} KRW 이하입니다."
+        )
+
+    if side == "bid":
+        balance = _chance_account_balance(chance, "bid_account")
+        if balance is not None and balance < order_amount:
+            raise ValueError("주문가능 KRW 잔고가 부족합니다.")
+        return
+
+    balance = _chance_account_balance(chance, "ask_account")
+    volume = _decimal_value(order_payload.get("volume"))
+    if balance is not None and volume is not None and balance < volume:
+        raise ValueError("주문가능 코인 잔고가 부족합니다.")
+
+
+def _order_amount(order_payload: dict[str, Any]) -> Decimal:
+    price = _decimal_value(order_payload.get("price"))
+    volume = _decimal_value(order_payload.get("volume"))
+    if price is None or volume is None:
+        raise ValueError("주문 가격과 수량을 확인해 주세요.")
+    return price * volume
+
+
+def _chance_total_limit(
+    market_info: dict[str, Any],
+    side: str,
+    field: str,
+) -> Optional[Decimal]:
+    side_key = "bid" if side == "bid" else "ask"
+    side_policy = market_info.get(side_key)
+    if isinstance(side_policy, dict):
+        value = _decimal_value(side_policy.get(field))
+        if value is not None:
+            return value
+    return _decimal_value(
+        market_info.get(field) or market_info.get(f"{side_key}_{field}")
+    )
+
+
+def _chance_account_balance(chance: dict[str, Any], key: str) -> Optional[Decimal]:
+    account = chance.get(key)
+    if not isinstance(account, dict):
+        return None
+    return _decimal_value(account.get("balance"))
+
+
+def _contains_text(values: Any, needle: str) -> bool:
+    if isinstance(values, str):
+        return values.strip().lower() == needle.lower()
+    if isinstance(values, (list, tuple, set)):
+        return any(str(value).strip().lower() == needle.lower() for value in values)
+    return False
+
+
+def _decimal_value(value: Any) -> Optional[Decimal]:
+    token = _clean_decimal(value)
+    if not token:
+        return None
+    try:
+        return Decimal(token)
+    except InvalidOperation:
+        return None
+
+
+def _decimal_label(value: Decimal) -> str:
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def _ensure_trading_allowed(user_email: str) -> None:
