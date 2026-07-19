@@ -70,6 +70,21 @@ python .\scripts\apply_dwms_schema.py --verify-only
 
 적용기는 `.env`의 기존 DB 접속값을 사용하고 PostgreSQL 11 및 허용된 운영 DB인지 확인합니다. 비밀번호·토큰·인증서 개인키는 DWMS 테이블에 저장하지 않으며, 별도 런타임 DB 역할은 DBA가 `database/dwms/security_role_template.sql`을 검토한 뒤 구성해야 합니다.
 
+## 엔터프라이즈 EWMS 데이터베이스
+
+`database/ewms/`에는 `ewms` 스키마의 642개 테이블을 만드는 PostgreSQL 11 기준선이 있습니다. 서버 세션에 결합된 tenant RLS, 다화주·창고 마스터, 입고·품질·적치, 이중분개 재고원장, 출고·반품·리콜, 슬로팅·WCS/WES/AMR, 수입/수출·대한민국 신고·UNI-PASS·보세창고, FTA·컴플라이언스, 정산·회계·무역금융을 포함합니다. 상세 설계와 운영 전제는 [EWMS 데이터베이스 안내](database/ewms/README.md)를 참고하세요.
+
+```powershell
+cd D:\kcastle\kang
+python .\scripts\apply_ewms_schema.py --dry-run
+python .\scripts\apply_ewms_schema.py
+python .\scripts\apply_ewms_schema.py --verify-only
+python .\scripts\audit_ewms_schema.py
+python .\scripts\smoke_test_ewms_schema.py
+```
+
+적용기는 빈 스키마에서는 00~14 기준선과 allowlisted forward migration을, 기존 스키마에서는 미적용 forward migration만 한 트랜잭션에서 실행합니다. 기준선·forward SQL 체크섬, 최신 카탈로그·기준 시드 지문, FK/CHECK/트리거, RLS/FORCE RLS, Firebase 주체와 세션 컨텍스트, 재고·통관·보세·정산 구조를 검증합니다. rollback smoke는 수출 업무건/신고 봉인, UNI-PASS 상태 전이, 재고·보세원장 결합, 청구서·정산·복식분개의 최소 정상/차단 흐름을 검증하며 실제 관세청 네트워크나 생산 인증서를 사용하지 않습니다. 애플리케이션 런타임과 인증 서비스 역할은 `database/ewms/security_role_template.sql`을 권한 있는 DBA가 검토한 뒤 최소 권한으로 별도 생성해야 합니다.
+
 ## 엔터프라이즈 수출입물류 EIMS 데이터베이스
 
 `database/deims/`에는 `deims` 스키마의 611개 테이블을 만드는 PostgreSQL 11 기준선이 있습니다. Firebase 이메일/비밀번호·Google 로그인 매핑, 조직·파트너·품목, 수입/수출 업무건과 주문, 국제운송 예약, 관세·UNI-PASS·보세, FTA 원산지, 제재·전략물자·허가, 정산·무역금융, 보험·클레임, 문서·워크플로·감사를 포함합니다. 상세 설계와 운영 전제는 [DEIMS 데이터베이스 안내](database/deims/README.md)를 참고하세요.
